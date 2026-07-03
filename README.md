@@ -64,6 +64,48 @@ create policy "Allow all" on plan for all using (true) with check (true);
 Both fail soft too: without the `effort` column logging errors, and without the
 `plan` table the app just uses the plan bundled in `exercises.json`.
 
+### Phase 4 — auth + finisher logging
+
+Phase 4 replaces the open "Allow all" policies with real per-user security and
+adds a `note` column for finisher machine/mode. **Order matters** — the backfill
+needs your user account to exist first:
+
+1. In Supabase → **Authentication → URL Configuration**, set the Site URL to
+   `https://andrew-m-miller.github.io/racked/` and add your dev URLs (e.g.
+   `http://localhost:5173/racked/`, `http://192.168.1.67:5173/racked/`) as
+   additional redirect URLs. Email (magic link) auth is enabled by default.
+2. Open the app and sign in once with your email — this creates your
+   `auth.users` row. The old open policies are still active, so everything works.
+3. Then run:
+
+```sql
+-- finisher machine/mode ("treadmill", "rower", ...)
+alter table logs add column note text;
+
+-- per-user ownership; new rows pick up the signed-in user automatically
+alter table logs add column user_id uuid default auth.uid();
+alter table weigh_ins add column user_id uuid default auth.uid();
+
+-- claim all existing rows for the (single) account
+update logs set user_id = (select id from auth.users limit 1) where user_id is null;
+update weigh_ins set user_id = (select id from auth.users limit 1) where user_id is null;
+
+-- lock down: replace the open policies with per-user / signed-in-only ones
+drop policy "Allow all" on logs;
+drop policy "Allow all" on weigh_ins;
+drop policy "Allow all" on plan;
+create policy "Own rows" on logs for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Own rows" on weigh_ins for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Signed in" on plan for all to authenticated
+  using (true) with check (true);
+```
+
+After this, the anon key in the public bundle is harmless on its own — every
+read and write requires a signed-in session, and log/weigh-in rows are scoped
+to their owner.
+
 ### 2. Environment variables
 
 Copy `.env.example` to `.env` and fill in your credentials:
@@ -114,4 +156,12 @@ Live at `https://andrew-m-miller.github.io/racked/`.
   each substitute keeps its own history and progression
 - In-app plan editor: change exercises, sets, reps, starting weights, order, and
   finishers from your phone; the plan lives in Supabase, no deploy needed
+- Installable PWA: add to your phone home screen, opens full-screen, app shell
+  and fonts cached for offline
+- Offline sync queue: sets logged in a gym dead-zone are queued on-device and
+  upload automatically when the connection returns ("n entries pending sync")
+- Magic-link email sign-in with per-user row-level security — no password, and
+  the database is no longer world-writable
+- Finisher logging: minutes + optional machine/mode, counted in the session
+  summary and consistency calendar — a complete workout means lifts *and* cardio
 - Data persisted in Supabase Postgres, so your log follows you across devices

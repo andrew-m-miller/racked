@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
-import { PlayCircle, Check, Flame, Dumbbell, TrendingUp, TrendingDown, Minus, RotateCcw, Timer, Trophy, BarChart3, Pencil, Repeat } from "lucide-react";
-import { loadLogs, addLogEntry, clearAllLogs, loadWeighIns, addWeighIn, loadPlan, savePlan } from "./storage.js";
-import { SEED_DAYS, CAT_COLOR, slug, isTimeBased, isBodyweightEx, exMetric, metricUnit, dayForDate } from "./planUtils.js";
+import { PlayCircle, Check, Flame, Dumbbell, TrendingUp, TrendingDown, Minus, RotateCcw, Timer, Trophy, BarChart3, Pencil, Repeat, CloudOff, LogOut } from "lucide-react";
+import { loadLogs, addLogEntry, clearAllLogs, loadWeighIns, addWeighIn, loadPlan, savePlan, flushPending, onPendingChange } from "./storage.js";
+import { supabase } from "./supabaseClient.js";
+import { SEED_DAYS, CAT_COLOR, slug, isTimeBased, isBodyweightEx, exMetric, metricUnit, dayForDate, finisherSlug } from "./planUtils.js";
 import { Sparkline, ExerciseChartModal } from "./charts.jsx";
 import ProgressView from "./ProgressView.jsx";
 import PlanEditor from "./PlanEditor.jsx";
@@ -530,7 +531,101 @@ function ExerciseCard({ ex, primary, history, setsDone, onLog, onOpenChart, onSw
   );
 }
 
-export default function RackedTracker() {
+// Cardio finisher: display + a log control (minutes, optional machine/mode).
+// Entries land in `logs` under the day's finisher slug with reps = minutes.
+function FinisherCard({ day, entries, onLog }) {
+  const [minutes, setMinutes] = useState("");
+  const [mode, setMode] = useState("");
+  const done = entries.length > 0;
+  const doneMin = entries.reduce((n, e) => n + (parseFloat(e.reps) || 0), 0);
+
+  const submit = () => {
+    const min = parseFloat(minutes);
+    if (!min || min <= 0) return;
+    onLog(min, mode.trim());
+    setMinutes("");
+    setMode("");
+  };
+
+  const inputStyle = {
+    background: "#101214",
+    border: "1px solid #2A2E33",
+    borderRadius: 6,
+    padding: "7px 8px",
+    color: "#F5F6F7",
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: 13,
+    outline: "none",
+  };
+
+  return (
+    <div
+      style={{
+        background: "#1B1E22",
+        border: `1px solid ${done ? "#22C55E55" : "#2A2E33"}`,
+        borderRadius: 10,
+        padding: "12px 14px",
+        marginTop: 4,
+      }}
+    >
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <Flame size={17} color="#E8967A" style={{ flexShrink: 0 }} />
+        <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: "#9AA1AC", flex: 1 }}>
+          <strong style={{ color: "#F5F6F7", fontWeight: 600 }}>Finisher — </strong>
+          {day.finisher}
+        </span>
+        {done && (
+          <div style={{ background: "#22C55E22", borderRadius: 999, padding: 4, flexShrink: 0 }}>
+            <Check size={14} color="#22C55E" strokeWidth={3} />
+          </div>
+        )}
+      </div>
+
+      {done ? (
+        <div style={{ marginTop: 8, fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, color: "#22C55E" }}>
+          {doneMin} min done{entries[entries.length - 1].note ? ` · ${entries[entries.length - 1].note}` : ""}
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="min"
+            value={minutes}
+            onChange={(e) => setMinutes(e.target.value)}
+            style={{ ...inputStyle, width: 52 }}
+          />
+          <input
+            type="text"
+            placeholder="machine / mode (optional)"
+            value={mode}
+            onChange={(e) => setMode(e.target.value)}
+            style={{ ...inputStyle, flex: 1, minWidth: 0, fontFamily: "'Inter', sans-serif" }}
+          />
+          <button
+            onClick={submit}
+            style={{
+              background: "#F5F6F7",
+              color: "#101214",
+              border: "none",
+              borderRadius: 6,
+              padding: "8px 12px",
+              fontFamily: "'Inter', sans-serif",
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            Log
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function RackedTracker({ session }) {
   const [activeDay, setActiveDay] = useState("A");
   const [logs, setLogs] = useState({}); // { slug: [{date,weight,reps}, ...] }
   const [loaded, setLoaded] = useState(false);
@@ -542,8 +637,21 @@ export default function RackedTracker() {
   const [weighIns, setWeighIns] = useState([]); // [{date, weight}]
   const [chartEx, setChartEx] = useState(null); // exercise shown in the chart modal
   const [prToast, setPrToast] = useState(null);
+  const [pendingSync, setPendingSync] = useState(0); // offline writes waiting to upload
   const sessionStartRef = useRef(null); // first set logged in this app session
   const prToastTimerRef = useRef(null);
+
+  // Offline queue: track how many writes are parked, and replay them the
+  // moment the connection comes back.
+  useEffect(() => {
+    const unsubscribe = onPendingChange(setPendingSync);
+    const onOnline = () => flushPending().catch(() => setSaveError(true));
+    window.addEventListener("online", onOnline);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("online", onOnline);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -613,13 +721,27 @@ export default function RackedTracker() {
       clearTimeout(prToastTimerRef.current);
       prToastTimerRef.current = setTimeout(() => setPrToast(null), 4000);
     }
-    // Rest between sets — but not after the set that finishes the workout,
-    // where the session summary takes over.
-    const dayDone = activeExercises.every(
+    // Rest between sets — but not after the last lifting set, where the
+    // finisher (and then the session summary) takes over.
+    const liftsDoneNow = activeExercises.every(
       (e) => (nextLogs[slug(e.name)] || []).filter((h) => h.date === today).length >= e.sets
     );
-    setRestEndsAt(dayDone ? null : Date.now() + REST_SECONDS * 1000);
+    setRestEndsAt(liftsDoneNow ? null : Date.now() + REST_SECONDS * 1000);
     addLogEntry(key, today, weight, reps, effort ?? null)
+      .then(() => setSaveError(false))
+      .catch(() => {
+        setLogs(previousLogs);
+        setSaveError(true);
+      });
+  };
+
+  const handleLogFinisher = (minutes, mode) => {
+    const key = finisherSlug(day.id);
+    const previousLogs = logs;
+    const entry = { date: today, weight: "", reps: String(minutes), effort: null, note: mode || null };
+    setLogs({ ...logs, [key]: [...(logs[key] || []), entry] });
+    if (!sessionStartRef.current) sessionStartRef.current = Date.now();
+    addLogEntry(key, today, "", String(minutes), null, mode || null)
       .then(() => setSaveError(false))
       .catch(() => {
         setLogs(previousLogs);
@@ -669,7 +791,13 @@ export default function RackedTracker() {
   const setsDoneFor = (ex) => (logs[slug(ex.name)] || []).filter((h) => h.date === today).length;
   const totalSets = activeExercises.reduce((n, ex) => n + ex.sets, 0);
   const setsDoneToday = activeExercises.reduce((n, ex) => n + Math.min(setsDoneFor(ex), ex.sets), 0);
-  const dayComplete = activeExercises.every((ex) => setsDoneFor(ex) >= ex.sets);
+  // A complete workout = every lift set logged AND the cardio finisher —
+  // which is the point of the program.
+  const finisherToday = (logs[finisherSlug(day.id)] || []).filter((e) => e.date === today);
+  const finisherDone = finisherToday.length > 0;
+  const cardioMin = finisherToday.reduce((n, e) => n + (parseFloat(e.reps) || 0), 0);
+  const liftsDone = activeExercises.every((ex) => setsDoneFor(ex) >= ex.sets);
+  const dayComplete = liftsDone && finisherDone;
   const stats = dayComplete ? sessionStats(activeExercises, logs, today) : null;
   const durationMin =
     dayComplete && sessionStartRef.current
@@ -773,7 +901,25 @@ export default function RackedTracker() {
           3-day full body · your gym, your numbers
         </p>
 
-        {saveError && (
+        {pendingSync > 0 ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              background: "#33260F",
+              border: "1px solid #FACC1555",
+              borderRadius: 8,
+              padding: "9px 12px",
+              marginBottom: 16,
+            }}
+          >
+            <CloudOff size={15} color="#FACC15" style={{ flexShrink: 0 }} />
+            <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 12.5, color: "#FDE68A" }}>
+              {pendingSync} {pendingSync === 1 ? "entry" : "entries"} pending sync — they'll upload when you're back online.
+            </span>
+          </div>
+        ) : saveError ? (
           <div
             style={{
               display: "flex",
@@ -791,7 +937,7 @@ export default function RackedTracker() {
               Couldn't reach the database — check your connection and try again.
             </span>
           </div>
-        )}
+        ) : null}
 
         {view === "progress" && <ProgressView days={days} logs={logs} weighIns={weighIns} today={today} onAddWeighIn={handleWeighIn} />}
 
@@ -865,11 +1011,12 @@ export default function RackedTracker() {
           </span>
         </div>
 
+        {/* Progress bar: lift sets + the finisher as one final segment */}
         <div style={{ height: 3, background: "#1B1E22", borderRadius: 2, marginBottom: 18, overflow: "hidden" }}>
           <div
             style={{
               height: "100%",
-              width: `${(setsDoneToday / totalSets) * 100}%`,
+              width: `${((setsDoneToday + (finisherDone ? 1 : 0)) / (totalSets + 1)) * 100}%`,
               background: day.plate,
               transition: "width 200ms ease",
             }}
@@ -914,7 +1061,8 @@ export default function RackedTracker() {
               }}
             >
               <span>{stats.volume.toLocaleString()} lb lifted</span>
-              {durationMin != null && <span>{durationMin} min</span>}
+              {cardioMin > 0 && <span>{cardioMin} min cardio</span>}
+              {durationMin != null && <span>{durationMin} min total</span>}
               <span>{totalSets} sets</span>
             </div>
             {stats.levelUps.length > 0 && (
@@ -922,9 +1070,6 @@ export default function RackedTracker() {
                 Leveled up: {stats.levelUps.join(", ")}
               </div>
             )}
-            <div style={{ marginTop: 6, fontFamily: "'Inter', sans-serif", fontSize: 12.5, color: "#9AA1AC" }}>
-              Don't skip the finisher below.
-            </div>
           </div>
         )}
 
@@ -948,24 +1093,7 @@ export default function RackedTracker() {
         })}
 
         {/* Finisher */}
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            background: "#1B1E22",
-            border: "1px solid #2A2E33",
-            borderRadius: 10,
-            padding: "12px 14px",
-            marginTop: 4,
-          }}
-        >
-          <Flame size={17} color="#E8967A" style={{ flexShrink: 0 }} />
-          <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: "#9AA1AC" }}>
-            <strong style={{ color: "#F5F6F7", fontWeight: 600 }}>Finisher — </strong>
-            {day.finisher}
-          </span>
-        </div>
+        <FinisherCard day={day} entries={finisherToday} onLog={handleLogFinisher} />
         </>
         )}
 
@@ -973,7 +1101,7 @@ export default function RackedTracker() {
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 4,
+            gap: 8,
             justifyContent: "center",
             marginTop: 24,
             fontFamily: "'JetBrains Mono', monospace",
@@ -981,7 +1109,29 @@ export default function RackedTracker() {
             color: "#3A3F45",
           }}
         >
-          logs synced to your account
+          <span>{session?.user?.email || "logs synced to your account"}</span>
+          {session && (
+            <button
+              type="button"
+              onClick={() => supabase.auth.signOut()}
+              title="Sign out"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                background: "transparent",
+                border: "none",
+                color: "#3A3F45",
+                cursor: "pointer",
+                padding: 2,
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 11,
+              }}
+            >
+              <LogOut size={11} />
+              sign out
+            </button>
+          )}
         </div>
       </div>
 

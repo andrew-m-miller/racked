@@ -31,10 +31,16 @@ export function metricUnit(ex) {
   return isBodyweightEx(ex) ? "reps" : "lb";
 }
 
+// Finisher cardio logs live under a per-day slug ("finisher-a" etc.) in the
+// same logs table: reps = minutes, weight unused, note = machine/mode.
+export function finisherSlug(dayId) {
+  return `finisher-${String(dayId).toLowerCase()}`;
+}
+
 // Which plan day was trained on a given date. Exercises shared across days
 // (e.g. Seated Cable Row on A and C) make a single-slug lookup ambiguous, so
 // the day is chosen by majority vote over that date's entries. Substitutes
-// count too, via each exercise's alts.
+// count too, via each exercise's alts, as does the day's finisher.
 export function dayForDate(days, logs, date) {
   const votes = {};
   for (const d of days) {
@@ -45,6 +51,9 @@ export function dayForDate(days, logs, date) {
           if (e.date === date) votes[d.id] = (votes[d.id] || 0) + 1;
         }
       }
+    }
+    for (const e of logs[finisherSlug(d.id)] || []) {
+      if (e.date === date) votes[d.id] = (votes[d.id] || 0) + 1;
     }
   }
   const winner = Object.keys(votes).sort((a, b) => votes[b] - votes[a])[0];

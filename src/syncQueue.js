@@ -1,0 +1,94 @@
+// Offline sync queue: writes that fail because the network is down are parked
+// in localStorage and replayed, in order, once the connection returns. Set
+// logging at the gym keeps working through dead-zones — the optimistic UI
+// update stands and the row uploads later.
+const QUEUE_KEY = "racked-pending-v1";
+
+const listeners = new Set();
+
+function read() {
+  try {
+    return JSON.parse(localStorage.getItem(QUEUE_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function write(ops) {
+  try {
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(ops));
+  } catch {
+    // localStorage full/unavailable — the op still ran optimistically in the UI
+  }
+  for (const cb of listeners) cb(ops.length);
+}
+
+export function pendingOps() {
+  return read();
+}
+
+export function pendingCount() {
+  return read().length;
+}
+
+// Subscribe to queue-size changes; fires immediately with the current count.
+export function onPendingChange(cb) {
+  listeners.add(cb);
+  cb(read().length);
+  return () => listeners.delete(cb);
+}
+
+// Network failures (offline, DNS, dropped connection) are queueable; anything
+// else (RLS violation, bad payload) is a real error the caller must see.
+// Browsers word fetch failures differently: Chrome "Failed to fetch",
+// Safari "Load failed", Firefox "NetworkError...".
+export function isNetworkError(err) {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+  return /fetch|network|load failed|connection|timed? ?out/i.test(String(err?.message || err));
+}
+
+// Run `op` through `perform`, queueing it if the network is down. Anything
+// already queued keeps FIFO order — new writes line up behind it so rows
+// reach the database in the order they were logged.
+export async function runOrQueue(perform, op) {
+  const q = read();
+  if (q.length > 0) {
+    write([...q, op]);
+    await flush(perform);
+    return { queued: pendingCount() > 0 };
+  }
+  try {
+    await perform(op);
+    return { queued: false };
+  } catch (err) {
+    if (isNetworkError(err)) {
+      write([op]);
+      return { queued: true };
+    }
+    throw err;
+  }
+}
+
+// Replay queued ops in order. A network failure stops the run (the rest stay
+// queued for next time); an op the server permanently rejects is dropped so
+// it can't wedge the queue, and the error propagates to the caller.
+export async function flush(perform) {
+  let q = read();
+  while (q.length > 0) {
+    try {
+      await perform(q[0]);
+    } catch (err) {
+      if (isNetworkError(err)) return q.length;
+      write(q.slice(1));
+      throw err;
+    }
+    q = q.slice(1);
+    write(q);
+  }
+  return 0;
+}
+
+// Drop queued ops matching `predicate` (e.g. all "logs" ops on history reset).
+export function discardOps(predicate) {
+  write(read().filter((op) => !predicate(op)));
+}
