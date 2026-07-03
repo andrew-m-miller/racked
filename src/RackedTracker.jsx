@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { PlayCircle, Check, Flame, Dumbbell, TrendingUp, TrendingDown, Minus, RotateCcw } from "lucide-react";
-import { loadLogs, saveLogs } from "./storage.js";
+import { loadLogs, addLogEntry, clearAllLogs } from "./storage.js";
 import plan from "../exercises.json";
 
 const DAYS = plan.days;
@@ -295,31 +295,54 @@ function ExerciseCard({ ex, history, todayLogged, onLog }) {
 
 export default function RackedTracker() {
   const [activeDay, setActiveDay] = useState("A");
-  const [logs, setLogs] = useState(() => loadLogs()); // { slug: [{date,weight,reps}, ...] }
+  const [logs, setLogs] = useState({}); // { slug: [{date,weight,reps}, ...] }
+  const [loaded, setLoaded] = useState(false);
   const [saveError, setSaveError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadLogs()
+      .then((data) => {
+        if (!cancelled) setLogs(data);
+      })
+      .catch(() => {
+        if (!cancelled) setSaveError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const day = DAYS.find((d) => d.id === activeDay);
   const today = new Date().toISOString().slice(0, 10);
 
-  const persist = (nextLogs) => {
-    setLogs(nextLogs);
-    try {
-      saveLogs(nextLogs);
-      setSaveError(false);
-    } catch {
-      setSaveError(true);
-    }
-  };
-
   const handleLog = (exName, weight, reps) => {
     const key = slug(exName);
     const history = logs[key] || [];
-    persist({ ...logs, [key]: [...history, { date: today, weight, reps }] });
+    const previousLogs = logs;
+    // Update optimistically so the UI feels instant; roll back if the insert fails.
+    setLogs({ ...logs, [key]: [...history, { date: today, weight, reps }] });
+    addLogEntry(key, today, weight, reps)
+      .then(() => setSaveError(false))
+      .catch(() => {
+        setLogs(previousLogs);
+        setSaveError(true);
+      });
   };
 
   const resetAll = () => {
     if (!window.confirm || window.confirm("Clear all logged history? This can't be undone.")) {
-      persist({});
+      const previousLogs = logs;
+      setLogs({});
+      clearAllLogs()
+        .then(() => setSaveError(false))
+        .catch(() => {
+          setLogs(previousLogs);
+          setSaveError(true);
+        });
     }
   };
 
@@ -327,6 +350,14 @@ export default function RackedTracker() {
     const hist = logs[slug(ex.name)] || [];
     return hist.some((h) => h.date === today);
   }).length;
+
+  if (!loaded) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#101214", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#6B7280", fontSize: 13 }}>Loading your log…</span>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: "#101214", padding: "28px 16px 60px", display: "flex", justifyContent: "center" }}>
@@ -383,7 +414,7 @@ export default function RackedTracker() {
             }}
           >
             <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 12.5, color: "#F5B4B4" }}>
-              Couldn't save — your browser's local storage may be full or disabled.
+              Couldn't reach the database — check your connection and try again.
             </span>
           </div>
         )}
@@ -513,7 +544,7 @@ export default function RackedTracker() {
             color: "#3A3F45",
           }}
         >
-          logs saved to this browser
+          logs synced to your account
         </div>
       </div>
     </div>
