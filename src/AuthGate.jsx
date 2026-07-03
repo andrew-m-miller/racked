@@ -30,6 +30,8 @@ function SignIn() {
   const [email, setEmail] = useState("");
   const [state, setState] = useState("idle"); // idle | sending | sent | error
   const [errorMsg, setErrorMsg] = useState("");
+  const [codeMode, setCodeMode] = useState(false); // type the emailed code instead of tapping the link
+  const [code, setCode] = useState("");
 
   const send = async () => {
     const addr = email.trim();
@@ -45,6 +47,21 @@ function SignIn() {
     } else {
       setState("sent");
     }
+  };
+
+  // Redirect-free path: verifies a one-time code for this origin directly,
+  // so it works even when the magic link would bounce to the wrong URL.
+  const verifyCode = async () => {
+    const addr = email.trim();
+    const token = code.trim();
+    if (!addr.includes("@") || !token) return;
+    setState("sending");
+    const { error } = await supabase.auth.verifyOtp({ email: addr, token, type: "email" });
+    if (error) {
+      setErrorMsg(error.message);
+      setState("error");
+    }
+    // success: onAuthStateChange flips the gate, nothing to do here
   };
 
   return (
@@ -84,7 +101,7 @@ function SignIn() {
           Sign in to your training log
         </p>
 
-        {state === "sent" ? (
+        {state === "sent" && !codeMode && (
           <div
             style={{
               display: "flex",
@@ -95,6 +112,7 @@ function SignIn() {
               borderRadius: 10,
               padding: "14px 16px",
               textAlign: "left",
+              marginBottom: 12,
             }}
           >
             <Mail size={18} color="#22C55E" style={{ flexShrink: 0 }} />
@@ -102,7 +120,9 @@ function SignIn() {
               Magic link sent to <strong>{email.trim()}</strong> — open it on this device.
             </span>
           </div>
-        ) : (
+        )}
+
+        {state !== "sent" || codeMode ? (
           <>
             <input
               type="email"
@@ -111,7 +131,7 @@ function SignIn() {
               placeholder="you@email.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && send()}
+              onKeyDown={(e) => e.key === "Enter" && (codeMode ? verifyCode() : send())}
               style={{
                 width: "100%",
                 boxSizing: "border-box",
@@ -126,8 +146,33 @@ function SignIn() {
                 marginBottom: 10,
               }}
             />
+            {codeMode && (
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="one-time code"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && verifyCode()}
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  background: "#1B1E22",
+                  border: "1px solid #2A2E33",
+                  borderRadius: 8,
+                  padding: "11px 12px",
+                  color: "#F5F6F7",
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 14,
+                  outline: "none",
+                  marginBottom: 10,
+                  letterSpacing: "0.15em",
+                }}
+              />
+            )}
             <button
-              onClick={send}
+              onClick={codeMode ? verifyCode : send}
               disabled={state === "sending"}
               style={{
                 width: "100%",
@@ -143,15 +188,36 @@ function SignIn() {
                 opacity: state === "sending" ? 0.6 : 1,
               }}
             >
-              {state === "sending" ? "Sending…" : "Send magic link"}
+              {state === "sending" ? (codeMode ? "Verifying…" : "Sending…") : codeMode ? "Sign in with code" : "Send magic link"}
             </button>
             {state === "error" && (
               <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 12.5, color: "#F5B4B4", marginTop: 10 }}>
-                {errorMsg || "Couldn't send the link — try again."}
+                {errorMsg || "Something went wrong — try again."}
               </p>
             )}
           </>
-        )}
+        ) : null}
+
+        <button
+          type="button"
+          onClick={() => {
+            setCodeMode(!codeMode);
+            if (state === "error") setState("idle");
+          }}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "#6B7280",
+            cursor: "pointer",
+            fontFamily: "'Inter', sans-serif",
+            fontSize: 12,
+            marginTop: 14,
+            textDecoration: "underline",
+            textUnderlineOffset: 3,
+          }}
+        >
+          {codeMode ? "Use a magic link instead" : "Have a one-time code? Enter it instead"}
+        </button>
       </div>
     </div>
   );
