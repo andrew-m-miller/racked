@@ -48,6 +48,15 @@ npm install
 npm run dev
 ```
 
+### 4. Deploy to GitHub Pages
+
+The repo is already wired up: `.github/workflows/deploy.yml` builds and deploys to
+GitHub Pages on every push to `main`, using the `VITE_SUPABASE_URL` and
+`VITE_SUPABASE_ANON_KEY` repository secrets (**Settings → Secrets and variables →
+Actions**) as the build-time env vars.
+
+Live at `https://andrew-m-miller.github.io/racked/`.
+
 ## Features
 
 - 3-day alternating full-body plan (Day 1/2/3), 6 exercises + cardio finisher each
