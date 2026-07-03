@@ -27,6 +27,23 @@ create policy "Allow all" on logs for all using (true) with check (true);
 Plank). `reps` holds the rep count. Both are nullable since bodyweight rep exercises
 don't log a weight/seconds value.
 
+For bodyweight tracking (the Progress screen), also run:
+
+```sql
+create table weigh_ins (
+  id         bigint generated always as identity primary key,
+  date       date not null,
+  weight_lb  numeric not null,
+  created_at timestamptz default now()
+);
+
+alter table weigh_ins enable row level security;
+create policy "Allow all" on weigh_ins for all using (true) with check (true);
+```
+
+The app works without this table — weigh-in loading fails soft — but logging a
+weigh-in will show the save-error banner until it exists.
+
 ### 2. Environment variables
 
 Copy `.env.example` to `.env` and fill in your credentials:
@@ -65,4 +82,9 @@ Live at `https://andrew-m-miller.github.io/racked/`.
   the rep range, +5-10 sec on core holds, automatic 10% deload after 2 missed
   sessions in a row
 - Exercise cards link out to a form-tutorial video
+- 90s rest timer after every set, per-set progress, and a workout-complete summary
+- Progress screen: bodyweight trend (7-day smoothed), streak counters, and a
+  plate-colored consistency calendar
+- Tappable sparkline on each card opens a full progress chart with the all-time PR
+- PR toast when a set beats your all-time best
 - Data persisted in Supabase Postgres, so your log follows you across devices
