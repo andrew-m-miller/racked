@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Scale, Flame, ChevronLeft, ChevronRight } from "lucide-react";
 import { dayForDate } from "./planUtils.js";
 import { LineChart } from "./charts.jsx";
+import RecapSection from "./RecapSection.jsx";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -329,6 +330,7 @@ export default function ProgressView({ days, logs, weighIns, today, onAddWeighIn
     <div>
       <BodyweightSection weighIns={weighIns} today={today} onAddWeighIn={onAddWeighIn} />
       <CalendarSection days={days} logs={logs} today={today} />
+      <RecapSection days={days} logs={logs} weighIns={weighIns} today={today} />
     </div>
   );
 }
