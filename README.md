@@ -44,6 +44,26 @@ create policy "Allow all" on weigh_ins for all using (true) with check (true);
 The app works without this table — weigh-in loading fails soft — but logging a
 weigh-in will show the save-error banner until it exists.
 
+For effort ratings and the in-app plan editor (Phase 3), also run:
+
+```sql
+-- optional easy/right/brutal rating per set: -1 / 0 / 1, null when skipped
+alter table logs add column effort smallint;
+
+-- the editable plan lives in a single jsonb row; exercises.json is the seed
+create table plan (
+  id         smallint primary key default 1,
+  data       jsonb not null,
+  updated_at timestamptz default now()
+);
+
+alter table plan enable row level security;
+create policy "Allow all" on plan for all using (true) with check (true);
+```
+
+Both fail soft too: without the `effort` column logging errors, and without the
+`plan` table the app just uses the plan bundled in `exercises.json`.
+
 ### 2. Environment variables
 
 Copy `.env.example` to `.env` and fill in your credentials:
@@ -87,4 +107,11 @@ Live at `https://andrew-m-miller.github.io/racked/`.
   plate-colored consistency calendar
 - Tappable sparkline on each card opens a full progress chart with the all-time PR
 - PR toast when a set beats your all-time best
+- Optional easy/right/brutal effort rating per set that tunes the progression
+  (hold after a brutal session, bigger jumps after easy lower-body work, and
+  grinding counts toward the deload trigger)
+- Swap button per exercise with curated alternates for when a machine's taken —
+  each substitute keeps its own history and progression
+- In-app plan editor: change exercises, sets, reps, starting weights, order, and
+  finishers from your phone; the plan lives in Supabase, no deploy needed
 - Data persisted in Supabase Postgres, so your log follows you across devices

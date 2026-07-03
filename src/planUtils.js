@@ -1,6 +1,8 @@
 import plan from "../exercises.json";
 
-export const DAYS = plan.days;
+// The bundled plan is the seed/fallback; the live plan is loaded from
+// Supabase (see storage.loadPlan) and passed around as `days`.
+export const SEED_DAYS = plan.days;
 export const CAT_COLOR = { Upper: "#5EC8D8", Lower: "#E8967A", Core: "#B9A6E0" };
 
 export function slug(name) {
@@ -31,13 +33,17 @@ export function metricUnit(ex) {
 
 // Which plan day was trained on a given date. Exercises shared across days
 // (e.g. Seated Cable Row on A and C) make a single-slug lookup ambiguous, so
-// the day is chosen by majority vote over that date's entries.
-export function dayForDate(logs, date) {
+// the day is chosen by majority vote over that date's entries. Substitutes
+// count too, via each exercise's alts.
+export function dayForDate(days, logs, date) {
   const votes = {};
-  for (const d of DAYS) {
+  for (const d of days) {
     for (const ex of d.exercises) {
-      for (const e of logs[slug(ex.name)] || []) {
-        if (e.date === date) votes[d.id] = (votes[d.id] || 0) + 1;
+      const names = [ex.name, ...(ex.alts || []).map((a) => a.name)];
+      for (const name of names) {
+        for (const e of logs[slug(name)] || []) {
+          if (e.date === date) votes[d.id] = (votes[d.id] || 0) + 1;
+        }
       }
     }
   }

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import { PlayCircle, Check, Flame, Dumbbell, TrendingUp, TrendingDown, Minus, RotateCcw, Timer, Trophy, BarChart3 } from "lucide-react";
-import { loadLogs, addLogEntry, clearAllLogs, loadWeighIns, addWeighIn } from "./storage.js";
-import { DAYS, CAT_COLOR, slug, isTimeBased, isBodyweightEx, exMetric, metricUnit, dayForDate } from "./planUtils.js";
+import { PlayCircle, Check, Flame, Dumbbell, TrendingUp, TrendingDown, Minus, RotateCcw, Timer, Trophy, BarChart3, Pencil, Repeat } from "lucide-react";
+import { loadLogs, addLogEntry, clearAllLogs, loadWeighIns, addWeighIn, loadPlan, savePlan } from "./storage.js";
+import { SEED_DAYS, CAT_COLOR, slug, isTimeBased, isBodyweightEx, exMetric, metricUnit, dayForDate } from "./planUtils.js";
 import { Sparkline, ExerciseChartModal } from "./charts.jsx";
 import ProgressView from "./ProgressView.jsx";
+import PlanEditor from "./PlanEditor.jsx";
 
 // ---- Progression helpers ----
 // pull the top-of-range target number out of a reps string like "12", "10/leg", "30-45 sec"
@@ -28,7 +29,7 @@ const REST_SECONDS = 90;
 // session. Exercises shared across days (e.g. Seated Cable Row on A and C)
 // would make a single-slug lookup ambiguous, so the day is chosen by majority
 // vote over the latest session's entries.
-function pickInitialDay(logs, today) {
+function pickInitialDay(days, logs, today) {
   let latestDate = null;
   for (const entries of Object.values(logs)) {
     for (const e of entries) {
@@ -37,17 +38,17 @@ function pickInitialDay(logs, today) {
   }
   if (!latestDate) return "A";
 
-  const lastDay = dayForDate(logs, latestDate);
+  const lastDay = dayForDate(days, logs, latestDate);
   if (!lastDay) return "A";
   if (latestDate === today) return lastDay;
-  const order = DAYS.map((d) => d.id);
+  const order = days.map((d) => d.id);
   return order[(order.indexOf(lastDay) + 1) % order.length];
 }
 
-function sessionStats(day, logs, today) {
+function sessionStats(exercises, logs, today) {
   let volume = 0;
   const levelUps = [];
-  for (const ex of day.exercises) {
+  for (const ex of exercises) {
     const hist = logs[slug(ex.name)] || [];
     const todayEntries = hist.filter((h) => h.date === today);
     const prior = hist.filter((h) => h.date < today);
@@ -84,13 +85,16 @@ function computeSuggestion(ex, history) {
   const lastReps = parseFloat(last.reps) || 0;
   const lastPrimary = timeBased ? lastWeight : lastReps;
   const hitTarget = target ? lastPrimary >= target : true;
+  const lastEffort = last.effort == null ? null : Number(last.effort); // -1 easy · 0 right · 1 brutal
 
-  // consecutive misses, most recent first
-  let missStreak = 0;
+  // consecutive misses, most recent first; a hit that was rated "brutal"
+  // counts as a half-miss toward the deload trigger
+  let missScore = 0;
   for (let i = history.length - 1; i >= 0; i--) {
     const v = timeBased ? parseFloat(history[i].weight) || 0 : parseFloat(history[i].reps) || 0;
     const t = target || 0;
-    if (v < t) missStreak++;
+    if (v < t) missScore += 1;
+    else if (Number(history[i].effort) === 1) missScore += 0.5;
     else break;
   }
 
@@ -121,23 +125,32 @@ function computeSuggestion(ex, history) {
 
   const inc = INCREMENT[ex.cat] || 5;
 
-  if (missStreak >= 2) {
+  if (missScore >= 2) {
     const deload = Math.round((lastWeight * 0.9) / 2.5) * 2.5;
     return {
       text: `Deload to ${deload} lb`,
       value: String(deload),
       trend: "down",
-      detail: `Missed target ${missStreak} sessions in a row`,
+      detail: hitTarget ? "Hitting reps but grinding — reset and rebuild" : `Missed target ${Math.floor(missScore)} sessions in a row`,
     };
   }
 
   if (hitTarget) {
-    const next = lastWeight + inc;
+    if (lastEffort === 1) {
+      return {
+        text: `Hold at ${lastWeight} lb — make it feel solid`,
+        value: String(lastWeight),
+        trend: "flat",
+        detail: "Hit target but felt brutal last time",
+      };
+    }
+    const jump = lastEffort === -1 && ex.cat === "Lower" ? inc * 2 : inc;
+    const next = lastWeight + jump;
     return {
       text: `Try ${next} lb`,
       value: String(next),
       trend: "up",
-      detail: `Last: ${lastWeight} lb × ${last.reps} — hit target`,
+      detail: jump > inc ? "Felt easy — take the bigger jump" : `Last: ${lastWeight} lb × ${last.reps} — hit target`,
     };
   }
 
@@ -248,7 +261,13 @@ function RestTimer({ endsAt, onExtend, onSkip }) {
   );
 }
 
-function ExerciseCard({ ex, history, setsDone, onLog, onOpenChart }) {
+const EFFORTS = [
+  { value: -1, label: "easy", color: "#22C55E" },
+  { value: 0, label: "right", color: "#9AA1AC" },
+  { value: 1, label: "brutal", color: "#EF4444" },
+];
+
+function ExerciseCard({ ex, primary, history, setsDone, onLog, onOpenChart, onSwap }) {
   const complete = setsDone >= ex.sets;
   const timeBased = isTimeBased(ex);
   const showWeightBox = timeBased || !isBodyweightEx(ex);
@@ -256,12 +275,16 @@ function ExerciseCard({ ex, history, setsDone, onLog, onOpenChart }) {
   const suggestedReps = timeBased ? String(ex.sets) : String(targetNumber(ex.reps) ?? "");
   const [weight, setWeight] = useState(suggestion.value);
   const [reps, setReps] = useState(suggestedReps);
+  const [effort, setEffort] = useState(null); // optional: -1 easy · 0 right · 1 brutal
+  const [swapOpen, setSwapOpen] = useState(false);
+  const swapped = primary && ex.name !== primary.name;
 
   // Refill the inputs with the up-to-date recommendation whenever a new
   // set gets logged, without overwriting an in-progress edit in between.
   useEffect(() => {
     setWeight(suggestion.value);
     setReps(suggestedReps);
+    setEffort(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [history.length]);
 
@@ -272,7 +295,7 @@ function ExerciseCard({ ex, history, setsDone, onLog, onOpenChart }) {
 
   const submit = () => {
     if (!reps) return;
-    onLog(weight, reps);
+    onLog(weight, reps, effort);
   };
 
   return (
@@ -427,6 +450,81 @@ function ExerciseCard({ ex, history, setsDone, onLog, onOpenChart }) {
         >
           <PlayCircle size={20} />
         </button>
+        {primary && (primary.alts || []).length > 0 && (
+          <button
+            type="button"
+            onClick={() => setSwapOpen(!swapOpen)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              color: swapped ? "#5EC8D8" : "#6B7280",
+              padding: 6,
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+            }}
+            aria-label={`Swap ${primary.name} for an alternate`}
+            title="Machine taken? Swap it"
+          >
+            <Repeat size={17} />
+          </button>
+        )}
+      </div>
+
+      {swapOpen && (
+        <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+          {[primary, ...(primary.alts || [])].map((opt) => {
+            const active = opt.name === ex.name;
+            return (
+              <button
+                key={opt.name}
+                type="button"
+                onClick={() => {
+                  onSwap(opt.name === primary.name ? null : opt.name);
+                  setSwapOpen(false);
+                }}
+                style={{
+                  background: active ? "#5EC8D822" : "#101214",
+                  border: `1px solid ${active ? "#5EC8D8" : "#2A2E33"}`,
+                  borderRadius: 999,
+                  color: active ? "#5EC8D8" : "#9AA1AC",
+                  fontFamily: "'Inter', sans-serif",
+                  fontSize: 11.5,
+                  padding: "5px 10px",
+                  cursor: "pointer",
+                }}
+              >
+                {opt.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 9 }}>
+        <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, color: "#6B7280" }}>felt:</span>
+        {EFFORTS.map((e) => {
+          const active = effort === e.value;
+          return (
+            <button
+              key={e.value}
+              type="button"
+              onClick={() => setEffort(active ? null : e.value)}
+              style={{
+                background: active ? `${e.color}22` : "transparent",
+                border: `1px solid ${active ? e.color : "#2A2E33"}`,
+                borderRadius: 999,
+                color: active ? e.color : "#6B7280",
+                fontFamily: "'Inter', sans-serif",
+                fontSize: 11,
+                padding: "3px 10px",
+                cursor: "pointer",
+              }}
+            >
+              {e.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -438,7 +536,9 @@ export default function RackedTracker() {
   const [loaded, setLoaded] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [restEndsAt, setRestEndsAt] = useState(null);
-  const [view, setView] = useState("workout"); // "workout" | "progress"
+  const [view, setView] = useState("workout"); // "workout" | "progress" | "edit"
+  const [days, setDays] = useState(SEED_DAYS); // live plan; Supabase row wins over the bundled seed
+  const [swaps, setSwaps] = useState({}); // session-scoped substitutions: { primarySlug: altName }
   const [weighIns, setWeighIns] = useState([]); // [{date, weight}]
   const [chartEx, setChartEx] = useState(null); // exercise shown in the chart modal
   const [prToast, setPrToast] = useState(null);
@@ -447,14 +547,16 @@ export default function RackedTracker() {
 
   useEffect(() => {
     let cancelled = false;
-    // Weigh-ins degrade gracefully: if the table doesn't exist yet, the rest
-    // of the app still works.
-    Promise.all([loadLogs(), loadWeighIns().catch(() => [])])
-      .then(([logData, weighData]) => {
+    // Weigh-ins and the cloud plan degrade gracefully: if their tables don't
+    // exist yet, the rest of the app still works (plan falls back to the seed).
+    Promise.all([loadLogs(), loadWeighIns().catch(() => []), loadPlan().catch(() => null)])
+      .then(([logData, weighData, planData]) => {
         if (!cancelled) {
+          const liveDays = planData?.days?.length ? planData.days : SEED_DAYS;
           setLogs(logData);
           setWeighIns(weighData);
-          setActiveDay(pickInitialDay(logData, new Date().toISOString().slice(0, 10)));
+          setDays(liveDays);
+          setActiveDay(pickInitialDay(liveDays, logData, new Date().toISOString().slice(0, 10)));
         }
       })
       .catch(() => {
@@ -469,14 +571,32 @@ export default function RackedTracker() {
     };
   }, []);
 
-  const day = DAYS.find((d) => d.id === activeDay);
+  const day = days.find((d) => d.id === activeDay) || days[0];
   const today = new Date().toISOString().slice(0, 10);
 
-  const handleLog = (ex, weight, reps) => {
+  // Session-scoped substitution: a swapped exercise takes the slot but keeps
+  // its own slug, history, and progression.
+  const effectiveExercise = (base) => {
+    const altName = swaps[slug(base.name)];
+    if (!altName) return base;
+    const alt = (base.alts || []).find((a) => a.name === altName);
+    return alt ? { ...base, name: alt.name, start: alt.start, url: alt.url } : base;
+  };
+  const activeExercises = day.exercises.map(effectiveExercise);
+
+  const handleSwap = (base, altName) => {
+    const key = slug(base.name);
+    const next = { ...swaps };
+    if (altName) next[key] = altName;
+    else delete next[key];
+    setSwaps(next);
+  };
+
+  const handleLog = (ex, weight, reps, effort) => {
     const key = slug(ex.name);
     const history = logs[key] || [];
     const previousLogs = logs;
-    const entry = { date: today, weight, reps };
+    const entry = { date: today, weight, reps, effort: effort ?? null };
     const nextLogs = { ...logs, [key]: [...history, entry] };
     // Update optimistically so the UI feels instant; roll back if the insert fails.
     setLogs(nextLogs);
@@ -495,16 +615,28 @@ export default function RackedTracker() {
     }
     // Rest between sets — but not after the set that finishes the workout,
     // where the session summary takes over.
-    const dayDone = day.exercises.every(
-      (ex) => (nextLogs[slug(ex.name)] || []).filter((h) => h.date === today).length >= ex.sets
+    const dayDone = activeExercises.every(
+      (e) => (nextLogs[slug(e.name)] || []).filter((h) => h.date === today).length >= e.sets
     );
     setRestEndsAt(dayDone ? null : Date.now() + REST_SECONDS * 1000);
-    addLogEntry(key, today, weight, reps)
+    addLogEntry(key, today, weight, reps, effort ?? null)
       .then(() => setSaveError(false))
       .catch(() => {
         setLogs(previousLogs);
         setSaveError(true);
       });
+  };
+
+  const handleSavePlan = async (nextDays) => {
+    try {
+      await savePlan({ days: nextDays });
+      setDays(nextDays);
+      setSwaps({});
+      setSaveError(false);
+    } catch (err) {
+      setSaveError(true);
+      throw err;
+    }
   };
 
   const handleWeighIn = (weightLb) => {
@@ -535,10 +667,10 @@ export default function RackedTracker() {
   };
 
   const setsDoneFor = (ex) => (logs[slug(ex.name)] || []).filter((h) => h.date === today).length;
-  const totalSets = day.exercises.reduce((n, ex) => n + ex.sets, 0);
-  const setsDoneToday = day.exercises.reduce((n, ex) => n + Math.min(setsDoneFor(ex), ex.sets), 0);
-  const dayComplete = day.exercises.every((ex) => setsDoneFor(ex) >= ex.sets);
-  const stats = dayComplete ? sessionStats(day, logs, today) : null;
+  const totalSets = activeExercises.reduce((n, ex) => n + ex.sets, 0);
+  const setsDoneToday = activeExercises.reduce((n, ex) => n + Math.min(setsDoneFor(ex), ex.sets), 0);
+  const dayComplete = activeExercises.every((ex) => setsDoneFor(ex) >= ex.sets);
+  const stats = dayComplete ? sessionStats(activeExercises, logs, today) : null;
   const durationMin =
     dayComplete && sessionStartRef.current
       ? Math.max(1, Math.round((Date.now() - sessionStartRef.current) / 60000))
@@ -612,6 +744,23 @@ export default function RackedTracker() {
             </button>
             <button
               type="button"
+              onClick={() => setView(view === "edit" ? "workout" : "edit")}
+              title={view === "edit" ? "Back to workout" : "Edit plan"}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                background: view === "edit" ? "#1B1E22" : "transparent",
+                border: `1px solid ${view === "edit" ? "#B9A6E0" : "#2A2E33"}`,
+                borderRadius: 8,
+                color: view === "edit" ? "#B9A6E0" : "#9AA1AC",
+                cursor: "pointer",
+                padding: "6px 8px",
+              }}
+            >
+              <Pencil size={13} />
+            </button>
+            <button
+              type="button"
               onClick={resetAll}
               title="Clear all history"
               style={{ background: "transparent", border: "none", color: "#3A3F45", cursor: "pointer", padding: 4 }}
@@ -644,13 +793,15 @@ export default function RackedTracker() {
           </div>
         )}
 
-        {view === "progress" && <ProgressView logs={logs} weighIns={weighIns} today={today} onAddWeighIn={handleWeighIn} />}
+        {view === "progress" && <ProgressView days={days} logs={logs} weighIns={weighIns} today={today} onAddWeighIn={handleWeighIn} />}
+
+        {view === "edit" && <PlanEditor days={days} onSave={handleSavePlan} onClose={() => setView("workout")} />}
 
         {view === "workout" && (
         <>
         {/* Day selector */}
         <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
-          {DAYS.map((d) => {
+          {days.map((d) => {
             const active = d.id === activeDay;
             return (
               <button
@@ -778,17 +929,20 @@ export default function RackedTracker() {
         )}
 
         {/* Exercise list */}
-        {day.exercises.map((ex) => {
+        {day.exercises.map((base) => {
+          const ex = effectiveExercise(base);
           const key = slug(ex.name);
           const history = logs[key] || [];
           return (
             <ExerciseCard
               key={key}
               ex={ex}
+              primary={base}
               history={history}
               setsDone={setsDoneFor(ex)}
-              onLog={(w, r) => handleLog(ex, w, r)}
+              onLog={(w, r, effort) => handleLog(ex, w, r, effort)}
               onOpenChart={() => setChartEx(ex)}
+              onSwap={(altName) => handleSwap(base, altName)}
             />
           );
         })}

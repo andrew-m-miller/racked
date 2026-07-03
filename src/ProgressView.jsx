@@ -1,10 +1,9 @@
 import React, { useState } from "react";
 import { Scale, Flame, ChevronLeft, ChevronRight } from "lucide-react";
-import { DAYS, dayForDate } from "./planUtils.js";
+import { dayForDate } from "./planUtils.js";
 import { LineChart } from "./charts.jsx";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const PLATE = Object.fromEntries(DAYS.map((d) => [d.id, d.plate]));
 
 function toDate(dateStr) {
   return new Date(dateStr + "T00:00:00");
@@ -207,14 +206,15 @@ function BodyweightSection({ weighIns, today, onAddWeighIn }) {
   );
 }
 
-function CalendarSection({ logs, today }) {
+function CalendarSection({ days, logs, today }) {
   const [offset, setOffset] = useState(0); // months back from current
+  const plate = Object.fromEntries(days.map((d) => [d.id, d.plate]));
 
   // Map each training date to the day (A/B/C) that was performed.
   const dates = new Set();
   for (const entries of Object.values(logs)) for (const e of entries) dates.add(e.date);
   const dayByDate = {};
-  for (const d of dates) dayByDate[d] = dayForDate(logs, d);
+  for (const d of dates) dayByDate[d] = dayForDate(days, logs, d);
 
   const sessions = [...dates];
   const streaks = computeStreaks(sessions, today);
@@ -284,7 +284,7 @@ function CalendarSection({ logs, today }) {
             if (d === null) return <div key={`pad-${i}`} />;
             const key = toKey(new Date(month.getFullYear(), month.getMonth(), d));
             const dayId = dayByDate[key];
-            const plate = dayId ? PLATE[dayId] : null;
+            const fill = dayId ? plate[dayId] : null;
             const isToday = key === today;
             return (
               <div key={key} style={{ display: "flex", justifyContent: "center" }}>
@@ -298,9 +298,9 @@ function CalendarSection({ logs, today }) {
                     justifyContent: "center",
                     fontFamily: "'JetBrains Mono', monospace",
                     fontSize: 11,
-                    color: plate ? "#101214" : "#6B7280",
-                    fontWeight: plate ? 700 : 400,
-                    background: plate || "transparent",
+                    color: fill ? "#101214" : "#6B7280",
+                    fontWeight: fill ? 700 : 400,
+                    background: fill || "transparent",
                     border: isToday ? "1.5px solid #F5F6F7" : "1.5px solid transparent",
                   }}
                 >
@@ -312,7 +312,7 @@ function CalendarSection({ logs, today }) {
         </div>
 
         <div style={{ display: "flex", gap: 14, justifyContent: "center", marginTop: 12 }}>
-          {DAYS.map((d) => (
+          {days.map((d) => (
             <span key={d.id} style={{ display: "flex", alignItems: "center", gap: 5, fontFamily: "'Inter', sans-serif", fontSize: 11, color: "#9AA1AC" }}>
               <span style={{ width: 9, height: 9, borderRadius: "50%", background: d.plate, display: "inline-block" }} />
               {d.name}
@@ -324,11 +324,11 @@ function CalendarSection({ logs, today }) {
   );
 }
 
-export default function ProgressView({ logs, weighIns, today, onAddWeighIn }) {
+export default function ProgressView({ days, logs, weighIns, today, onAddWeighIn }) {
   return (
     <div>
       <BodyweightSection weighIns={weighIns} today={today} onAddWeighIn={onAddWeighIn} />
-      <CalendarSection logs={logs} today={today} />
+      <CalendarSection days={days} logs={logs} today={today} />
     </div>
   );
 }
