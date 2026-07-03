@@ -1,0 +1,49 @@
+{
+  "days": [
+    {
+      "id": "A",
+      "label": "Day 1",
+      "name": "Full Body A",
+      "plate": "#3B82F6",
+      "finisher": "12–15 min incline treadmill walk or bike intervals",
+      "exercises": [
+        { "name": "Goblet Squat", "cat": "Lower", "sets": 3, "reps": "12", "start": "30–35 lb DB", "url": "https://www.youtube.com/watch?v=gm4ln6PO4rc" },
+        { "name": "Seated Cable Row", "cat": "Upper", "sets": 3, "reps": "12", "start": "70–90 lb", "url": "https://www.youtube.com/watch?v=7BkgqzC6WsM" },
+        { "name": "Incline Dumbbell Press", "cat": "Upper", "sets": 3, "reps": "12", "start": "25–30 lb DBs", "url": "https://www.youtube.com/watch?v=awEEyL5zGvU" },
+        { "name": "Dumbbell Romanian Deadlift", "cat": "Lower", "sets": 3, "reps": "12", "start": "30–40 lb DBs", "url": "https://www.youtube.com/watch?v=hQgFixeXdZo" },
+        { "name": "Cable Tricep Pushdown", "cat": "Upper", "sets": 2, "reps": "15", "start": "30–40 lb", "url": "https://www.youtube.com/watch?v=_w-HpW70nSQ" },
+        { "name": "Plank", "cat": "Core", "sets": 3, "reps": "30–45 sec", "start": "Bodyweight", "url": "https://www.youtube.com/watch?v=A2b2EmIg0dA" }
+      ]
+    },
+    {
+      "id": "B",
+      "label": "Day 2",
+      "name": "Full Body B",
+      "plate": "#FACC15",
+      "finisher": "15 min stairmaster or rower, moderate–hard pace",
+      "exercises": [
+        { "name": "Barbell/Dumbbell Deadlift", "cat": "Lower", "sets": 3, "reps": "10", "start": "95–135 lb bar", "url": "https://www.youtube.com/watch?v=XxWcirHIwVo" },
+        { "name": "Lat Pulldown", "cat": "Upper", "sets": 3, "reps": "12", "start": "70–90 lb", "url": "https://www.youtube.com/watch?v=UTerui_Q7r0" },
+        { "name": "Dumbbell Shoulder Press", "cat": "Upper", "sets": 3, "reps": "12", "start": "20–25 lb DBs", "url": "https://www.youtube.com/watch?v=1jYq9QQEWqE" },
+        { "name": "Walking Lunges", "cat": "Lower", "sets": 3, "reps": "10/leg", "start": "15–20 lb DBs", "url": "https://www.youtube.com/watch?v=_DLIS8SySzs" },
+        { "name": "Cable Bicep Curl", "cat": "Upper", "sets": 2, "reps": "15", "start": "20–30 lb", "url": "https://www.youtube.com/watch?v=2MUEL4nL6hA" },
+        { "name": "Hanging Knee Raise / Cable Crunch", "cat": "Core", "sets": 3, "reps": "15", "start": "Bodyweight", "url": "https://www.youtube.com/watch?v=l7OroezzX9k" }
+      ]
+    },
+    {
+      "id": "C",
+      "label": "Day 3",
+      "name": "Full Body C",
+      "plate": "#22C55E",
+      "finisher": "10 min intervals (assault bike or treadmill sprints/walk)",
+      "exercises": [
+        { "name": "Leg Press", "cat": "Lower", "sets": 3, "reps": "12", "start": "180–230 lb", "url": "https://www.youtube.com/watch?v=K5n2vg3oZa4" },
+        { "name": "Chest Press / DB Bench Press", "cat": "Upper", "sets": 3, "reps": "12", "start": "30–35 lb DBs", "url": "https://www.youtube.com/watch?v=5Y3VZsLb1Ys" },
+        { "name": "Seated Cable Row", "cat": "Upper", "sets": 3, "reps": "12", "start": "70–90 lb", "url": "https://www.youtube.com/watch?v=7BkgqzC6WsM" },
+        { "name": "Dumbbell Step-Ups", "cat": "Lower", "sets": 3, "reps": "10/leg", "start": "15–20 lb DBs", "url": "https://www.youtube.com/watch?v=DxUNi119Qzs" },
+        { "name": "Lateral Raises", "cat": "Upper", "sets": 2, "reps": "15", "start": "8–12 lb DBs", "url": "https://www.youtube.com/watch?v=Y29xKcze8Ik" },
+        { "name": "Side Plank", "cat": "Core", "sets": 3, "reps": "20–30 sec/side", "start": "Bodyweight", "url": "https://www.youtube.com/watch?v=Ujf5ELfqI7o" }
+      ]
+    }
+  ]
+}
