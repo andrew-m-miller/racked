@@ -1,16 +1,11 @@
-import React, { useState, useEffect } from "react";
-import { PlayCircle, Check, Flame, Dumbbell, TrendingUp, TrendingDown, Minus, RotateCcw } from "lucide-react";
-import { loadLogs, addLogEntry, clearAllLogs } from "./storage.js";
-import plan from "../exercises.json";
-
-const DAYS = plan.days;
-const CAT_COLOR = { Upper: "#5EC8D8", Lower: "#E8967A", Core: "#B9A6E0" };
+import React, { useState, useEffect, useRef } from "react";
+import { PlayCircle, Check, Flame, Dumbbell, TrendingUp, TrendingDown, Minus, RotateCcw, Timer, Trophy, BarChart3 } from "lucide-react";
+import { loadLogs, addLogEntry, clearAllLogs, loadWeighIns, addWeighIn } from "./storage.js";
+import { DAYS, CAT_COLOR, slug, isTimeBased, isBodyweightEx, exMetric, metricUnit, dayForDate } from "./planUtils.js";
+import { Sparkline, ExerciseChartModal } from "./charts.jsx";
+import ProgressView from "./ProgressView.jsx";
 
 // ---- Progression helpers ----
-function slug(name) {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-}
-
 // pull the top-of-range target number out of a reps string like "12", "10/leg", "30-45 sec"
 function targetNumber(repsStr) {
   const nums = (repsStr.match(/\d+/g) || []).map(Number);
@@ -26,15 +21,44 @@ function startNumber(startStr) {
 }
 
 const INCREMENT = { Upper: 5, Lower: 10, Core: 5 }; // lb, lb, seconds
+const REST_SECONDS = 90;
 
-// Holds (Plank, Side Plank) log seconds in the `weight` field and reps in
-// the `reps` field; other bodyweight moves (e.g. Hanging Knee Raise) just log reps.
-function isTimeBased(ex) {
-  return /sec/i.test(ex.reps);
+// Pick the day tab to open on: the day still in progress if there are sets
+// logged today, otherwise the next day in the A→B→C rotation after the last
+// session. Exercises shared across days (e.g. Seated Cable Row on A and C)
+// would make a single-slug lookup ambiguous, so the day is chosen by majority
+// vote over the latest session's entries.
+function pickInitialDay(logs, today) {
+  let latestDate = null;
+  for (const entries of Object.values(logs)) {
+    for (const e of entries) {
+      if (!latestDate || e.date > latestDate) latestDate = e.date;
+    }
+  }
+  if (!latestDate) return "A";
+
+  const lastDay = dayForDate(logs, latestDate);
+  if (!lastDay) return "A";
+  if (latestDate === today) return lastDay;
+  const order = DAYS.map((d) => d.id);
+  return order[(order.indexOf(lastDay) + 1) % order.length];
 }
 
-function isBodyweightEx(ex) {
-  return ex.start === "Bodyweight";
+function sessionStats(day, logs, today) {
+  let volume = 0;
+  const levelUps = [];
+  for (const ex of day.exercises) {
+    const hist = logs[slug(ex.name)] || [];
+    const todayEntries = hist.filter((h) => h.date === today);
+    const prior = hist.filter((h) => h.date < today);
+    if (!isTimeBased(ex) && !isBodyweightEx(ex)) {
+      for (const e of todayEntries) volume += (parseFloat(e.weight) || 0) * (parseFloat(e.reps) || 0);
+    }
+    const bestToday = todayEntries.reduce((m, e) => Math.max(m, exMetric(ex, e)), 0);
+    const bestPrior = prior.reduce((m, e) => Math.max(m, exMetric(ex, e)), 0);
+    if (prior.length > 0 && bestToday > bestPrior) levelUps.push(ex.name);
+  }
+  return { volume: Math.round(volume), levelUps };
 }
 
 function computeSuggestion(ex, history) {
@@ -131,7 +155,101 @@ function TrendIcon({ trend }) {
   return <Minus size={13} color="#6B7280" />;
 }
 
-function ExerciseCard({ ex, history, todayLogged, onLog }) {
+function RestTimer({ endsAt, onExtend, onSkip }) {
+  const [now, setNow] = useState(Date.now());
+  const firedRef = useRef(false);
+
+  useEffect(() => {
+    firedRef.current = false;
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [endsAt]);
+
+  const remaining = Math.max(0, Math.ceil((endsAt - now) / 1000));
+  const done = remaining <= 0;
+
+  useEffect(() => {
+    if (!done || firedRef.current) return;
+    firedRef.current = true;
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    const id = setTimeout(onSkip, 5000);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [done]);
+
+  const mm = Math.floor(remaining / 60);
+  const ss = String(remaining % 60).padStart(2, "0");
+  const pillButton = {
+    background: "transparent",
+    border: "1px solid #2A2E33",
+    borderRadius: 6,
+    padding: "5px 10px",
+    color: "#9AA1AC",
+    fontFamily: "'Inter', sans-serif",
+    fontSize: 12,
+    fontWeight: 500,
+    cursor: "pointer",
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 0,
+        left: 0,
+        right: 0,
+        display: "flex",
+        justifyContent: "center",
+        padding: "0 16px 16px",
+        pointerEvents: "none",
+        zIndex: 10,
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 440,
+          pointerEvents: "auto",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          background: done ? "#14321C" : "#1B1E22",
+          border: `1px solid ${done ? "#22C55E" : "#2A2E33"}`,
+          borderRadius: 10,
+          padding: "10px 14px",
+          boxShadow: "0 8px 24px rgba(0, 0, 0, 0.5)",
+        }}
+      >
+        <Timer size={16} color={done ? "#22C55E" : "#9AA1AC"} style={{ flexShrink: 0 }} />
+        <span
+          style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 16,
+            fontWeight: 600,
+            color: done ? "#22C55E" : "#F5F6F7",
+            minWidth: 44,
+          }}
+        >
+          {done ? "GO" : `${mm}:${ss}`}
+        </span>
+        <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, color: "#9AA1AC", flex: 1 }}>
+          {done ? "Rest over — next set" : "Resting"}
+        </span>
+        {!done && (
+          <button type="button" onClick={onExtend} style={pillButton}>
+            +30s
+          </button>
+        )}
+        <button type="button" onClick={onSkip} style={pillButton}>
+          {done ? "Dismiss" : "Skip"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ExerciseCard({ ex, history, setsDone, onLog, onOpenChart }) {
+  const complete = setsDone >= ex.sets;
   const timeBased = isTimeBased(ex);
   const showWeightBox = timeBased || !isBodyweightEx(ex);
   const suggestion = computeSuggestion(ex, history);
@@ -190,11 +308,32 @@ function ExerciseCard({ ex, history, todayLogged, onLog }) {
             </span>
           </div>
         </div>
-        {todayLogged && (
-          <div style={{ background: "#22C55E22", borderRadius: 999, padding: 4, flexShrink: 0 }}>
-            <Check size={14} color="#22C55E" strokeWidth={3} />
-          </div>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          {history.length >= 2 && (
+            <button
+              type="button"
+              onClick={onOpenChart}
+              aria-label={`Progress chart for ${ex.name}`}
+              style={{ background: "transparent", border: "none", padding: "2px 0", cursor: "pointer" }}
+            >
+              <Sparkline values={history.map((e) => exMetric(ex, e))} color={CAT_COLOR[ex.cat]} />
+            </button>
+          )}
+          <span
+            style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 12.5,
+              color: complete ? "#22C55E" : setsDone > 0 ? "#F5F6F7" : "#3A3F45",
+            }}
+          >
+            {Math.min(setsDone, ex.sets)}/{ex.sets}
+          </span>
+          {complete && (
+            <div style={{ background: "#22C55E22", borderRadius: 999, padding: 4 }}>
+              <Check size={14} color="#22C55E" strokeWidth={3} />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Suggestion strip */}
@@ -298,12 +437,25 @@ export default function RackedTracker() {
   const [logs, setLogs] = useState({}); // { slug: [{date,weight,reps}, ...] }
   const [loaded, setLoaded] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  const [restEndsAt, setRestEndsAt] = useState(null);
+  const [view, setView] = useState("workout"); // "workout" | "progress"
+  const [weighIns, setWeighIns] = useState([]); // [{date, weight}]
+  const [chartEx, setChartEx] = useState(null); // exercise shown in the chart modal
+  const [prToast, setPrToast] = useState(null);
+  const sessionStartRef = useRef(null); // first set logged in this app session
+  const prToastTimerRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
-    loadLogs()
-      .then((data) => {
-        if (!cancelled) setLogs(data);
+    // Weigh-ins degrade gracefully: if the table doesn't exist yet, the rest
+    // of the app still works.
+    Promise.all([loadLogs(), loadWeighIns().catch(() => [])])
+      .then(([logData, weighData]) => {
+        if (!cancelled) {
+          setLogs(logData);
+          setWeighIns(weighData);
+          setActiveDay(pickInitialDay(logData, new Date().toISOString().slice(0, 10)));
+        }
       })
       .catch(() => {
         if (!cancelled) setSaveError(true);
@@ -313,18 +465,40 @@ export default function RackedTracker() {
       });
     return () => {
       cancelled = true;
+      clearTimeout(prToastTimerRef.current);
     };
   }, []);
 
   const day = DAYS.find((d) => d.id === activeDay);
   const today = new Date().toISOString().slice(0, 10);
 
-  const handleLog = (exName, weight, reps) => {
-    const key = slug(exName);
+  const handleLog = (ex, weight, reps) => {
+    const key = slug(ex.name);
     const history = logs[key] || [];
     const previousLogs = logs;
+    const entry = { date: today, weight, reps };
+    const nextLogs = { ...logs, [key]: [...history, entry] };
     // Update optimistically so the UI feels instant; roll back if the insert fails.
-    setLogs({ ...logs, [key]: [...history, { date: today, weight, reps }] });
+    setLogs(nextLogs);
+    if (!sessionStartRef.current) sessionStartRef.current = Date.now();
+
+    // PR celebration: only against history from before today, so the first
+    // session (and each set after a PR today) doesn't re-trigger it.
+    const prior = history.filter((h) => h.date < today);
+    const bestPrior = prior.reduce((m, e) => Math.max(m, exMetric(ex, e)), 0);
+    const value = exMetric(ex, entry);
+    if (prior.length > 0 && value > bestPrior) {
+      setPrToast(`New PR — ${ex.name}: ${value} ${metricUnit(ex)}`);
+      if (navigator.vibrate) navigator.vibrate(100);
+      clearTimeout(prToastTimerRef.current);
+      prToastTimerRef.current = setTimeout(() => setPrToast(null), 4000);
+    }
+    // Rest between sets — but not after the set that finishes the workout,
+    // where the session summary takes over.
+    const dayDone = day.exercises.every(
+      (ex) => (nextLogs[slug(ex.name)] || []).filter((h) => h.date === today).length >= ex.sets
+    );
+    setRestEndsAt(dayDone ? null : Date.now() + REST_SECONDS * 1000);
     addLogEntry(key, today, weight, reps)
       .then(() => setSaveError(false))
       .catch(() => {
@@ -333,10 +507,24 @@ export default function RackedTracker() {
       });
   };
 
+  const handleWeighIn = (weightLb) => {
+    const previous = weighIns;
+    const next = [...weighIns, { date: today, weight: String(weightLb) }].sort((a, b) => (a.date < b.date ? -1 : 1));
+    setWeighIns(next);
+    addWeighIn(today, weightLb)
+      .then(() => setSaveError(false))
+      .catch(() => {
+        setWeighIns(previous);
+        setSaveError(true);
+      });
+  };
+
   const resetAll = () => {
     if (!window.confirm || window.confirm("Clear all logged history? This can't be undone.")) {
       const previousLogs = logs;
       setLogs({});
+      setRestEndsAt(null);
+      sessionStartRef.current = null;
       clearAllLogs()
         .then(() => setSaveError(false))
         .catch(() => {
@@ -346,10 +534,15 @@ export default function RackedTracker() {
     }
   };
 
-  const loggedTodayCount = day.exercises.filter((ex) => {
-    const hist = logs[slug(ex.name)] || [];
-    return hist.some((h) => h.date === today);
-  }).length;
+  const setsDoneFor = (ex) => (logs[slug(ex.name)] || []).filter((h) => h.date === today).length;
+  const totalSets = day.exercises.reduce((n, ex) => n + ex.sets, 0);
+  const setsDoneToday = day.exercises.reduce((n, ex) => n + Math.min(setsDoneFor(ex), ex.sets), 0);
+  const dayComplete = day.exercises.every((ex) => setsDoneFor(ex) >= ex.sets);
+  const stats = dayComplete ? sessionStats(day, logs, today) : null;
+  const durationMin =
+    dayComplete && sessionStartRef.current
+      ? Math.max(1, Math.round((Date.now() - sessionStartRef.current) / 60000))
+      : null;
 
   if (!loaded) {
     return (
@@ -360,7 +553,15 @@ export default function RackedTracker() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#101214", padding: "28px 16px 60px", display: "flex", justifyContent: "center" }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#101214",
+        padding: restEndsAt ? "28px 16px 116px" : "28px 16px 60px",
+        display: "flex",
+        justifyContent: "center",
+      }}
+    >
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
         input:focus { border-color: #6B7280 !important; }
@@ -386,14 +587,38 @@ export default function RackedTracker() {
               Racked
             </h1>
           </div>
-          <button
-            type="button"
-            onClick={resetAll}
-            title="Clear all history"
-            style={{ background: "transparent", border: "none", color: "#3A3F45", cursor: "pointer", padding: 4 }}
-          >
-            <RotateCcw size={16} />
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => setView(view === "workout" ? "progress" : "workout")}
+              title={view === "workout" ? "Progress" : "Back to workout"}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                background: view === "progress" ? "#1B1E22" : "transparent",
+                border: `1px solid ${view === "progress" ? "#5EC8D8" : "#2A2E33"}`,
+                borderRadius: 8,
+                color: view === "progress" ? "#5EC8D8" : "#9AA1AC",
+                cursor: "pointer",
+                padding: "5px 10px",
+                fontFamily: "'Inter', sans-serif",
+                fontSize: 12,
+                fontWeight: 500,
+              }}
+            >
+              <BarChart3 size={14} />
+              Progress
+            </button>
+            <button
+              type="button"
+              onClick={resetAll}
+              title="Clear all history"
+              style={{ background: "transparent", border: "none", color: "#3A3F45", cursor: "pointer", padding: 4 }}
+            >
+              <RotateCcw size={16} />
+            </button>
+          </div>
         </div>
         <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: "#6B7280", margin: "0 0 14px" }}>
           3-day full body · your gym, your numbers
@@ -419,6 +644,10 @@ export default function RackedTracker() {
           </div>
         )}
 
+        {view === "progress" && <ProgressView logs={logs} weighIns={weighIns} today={today} onAddWeighIn={handleWeighIn} />}
+
+        {view === "workout" && (
+        <>
         {/* Day selector */}
         <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
           {DAYS.map((d) => {
@@ -481,7 +710,7 @@ export default function RackedTracker() {
             {day.name}
           </h2>
           <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, color: "#6B7280" }}>
-            {loggedTodayCount}/{day.exercises.length} today
+            {setsDoneToday}/{totalSets} sets today
           </span>
         </div>
 
@@ -489,25 +718,77 @@ export default function RackedTracker() {
           <div
             style={{
               height: "100%",
-              width: `${(loggedTodayCount / day.exercises.length) * 100}%`,
+              width: `${(setsDoneToday / totalSets) * 100}%`,
               background: day.plate,
               transition: "width 200ms ease",
             }}
           />
         </div>
 
+        {/* Session summary — appears once every set of the day is logged */}
+        {dayComplete && (
+          <div
+            style={{
+              border: `2px solid ${day.plate}`,
+              background: "#1B1E22",
+              borderRadius: 10,
+              padding: "14px 16px",
+              marginBottom: 18,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Trophy size={16} color={day.plate} />
+              <span
+                style={{
+                  fontFamily: "'Oswald', sans-serif",
+                  fontWeight: 600,
+                  fontSize: 15,
+                  letterSpacing: "0.03em",
+                  textTransform: "uppercase",
+                  color: "#F5F6F7",
+                }}
+              >
+                Workout complete
+              </span>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                gap: 16,
+                marginTop: 8,
+                flexWrap: "wrap",
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 12.5,
+                color: "#9AA1AC",
+              }}
+            >
+              <span>{stats.volume.toLocaleString()} lb lifted</span>
+              {durationMin != null && <span>{durationMin} min</span>}
+              <span>{totalSets} sets</span>
+            </div>
+            {stats.levelUps.length > 0 && (
+              <div style={{ marginTop: 6, fontFamily: "'Inter', sans-serif", fontSize: 12.5, color: "#22C55E" }}>
+                Leveled up: {stats.levelUps.join(", ")}
+              </div>
+            )}
+            <div style={{ marginTop: 6, fontFamily: "'Inter', sans-serif", fontSize: 12.5, color: "#9AA1AC" }}>
+              Don't skip the finisher below.
+            </div>
+          </div>
+        )}
+
         {/* Exercise list */}
         {day.exercises.map((ex) => {
           const key = slug(ex.name);
           const history = logs[key] || [];
-          const todayLogged = history.some((h) => h.date === today);
           return (
             <ExerciseCard
               key={key}
               ex={ex}
               history={history}
-              todayLogged={todayLogged}
-              onLog={(w, r) => handleLog(ex.name, w, r)}
+              setsDone={setsDoneFor(ex)}
+              onLog={(w, r) => handleLog(ex, w, r)}
+              onOpenChart={() => setChartEx(ex)}
             />
           );
         })}
@@ -531,6 +812,8 @@ export default function RackedTracker() {
             {day.finisher}
           </span>
         </div>
+        </>
+        )}
 
         <div
           style={{
@@ -547,6 +830,52 @@ export default function RackedTracker() {
           logs synced to your account
         </div>
       </div>
+
+      {restEndsAt != null && (
+        <RestTimer
+          endsAt={restEndsAt}
+          onExtend={() => setRestEndsAt((t) => t + 30000)}
+          onSkip={() => setRestEndsAt(null)}
+        />
+      )}
+
+      {prToast && (
+        <div
+          style={{
+            position: "fixed",
+            top: 14,
+            left: 0,
+            right: 0,
+            display: "flex",
+            justifyContent: "center",
+            padding: "0 16px",
+            pointerEvents: "none",
+            zIndex: 30,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: "#1B1E22",
+              border: "1px solid #FACC15",
+              borderRadius: 999,
+              padding: "8px 16px",
+              boxShadow: "0 8px 24px rgba(0, 0, 0, 0.5)",
+            }}
+          >
+            <Trophy size={14} color="#FACC15" />
+            <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, fontWeight: 600, color: "#F5F6F7" }}>
+              {prToast}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {chartEx && (
+        <ExerciseChartModal ex={chartEx} history={logs[slug(chartEx.name)] || []} onClose={() => setChartEx(null)} />
+      )}
     </div>
   );
 }

@@ -34,3 +34,21 @@ export async function clearAllLogs() {
   const { error } = await supabase.from("logs").delete().not("id", "is", null);
   if (error) throw error;
 }
+
+// Weigh-ins come back oldest-first as [{date, weight}] with weight as a
+// string, matching the shape conventions of loadLogs().
+export async function loadWeighIns() {
+  const { data, error } = await supabase
+    .from("weigh_ins")
+    .select("date, weight_lb")
+    .order("date", { ascending: true })
+    .order("id", { ascending: true });
+
+  if (error) throw error;
+  return data.map((row) => ({ date: row.date, weight: row.weight_lb == null ? "" : String(row.weight_lb) }));
+}
+
+export async function addWeighIn(date, weightLb) {
+  const { error } = await supabase.from("weigh_ins").insert({ date, weight_lb: Number(weightLb) });
+  if (error) throw error;
+}
