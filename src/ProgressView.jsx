@@ -325,12 +325,12 @@ function CalendarSection({ days, logs, today }) {
   );
 }
 
-export default function ProgressView({ days, logs, weighIns, today, onAddWeighIn }) {
+export default function ProgressView({ days, logs, weighIns, today, onAddWeighIn, onApplyPlanChange }) {
   return (
     <div>
       <BodyweightSection weighIns={weighIns} today={today} onAddWeighIn={onAddWeighIn} />
       <CalendarSection days={days} logs={logs} today={today} />
-      <RecapSection days={days} logs={logs} weighIns={weighIns} today={today} />
+      <RecapSection days={days} logs={logs} weighIns={weighIns} today={today} onApplyPlanChange={onApplyPlanChange} />
     </div>
   );
 }

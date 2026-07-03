@@ -646,6 +646,25 @@ export default function RackedTracker({ session }) {
     }
   };
 
+  // Apply a coach-suggested tweak ({exercise, sets, reps}, nulls = unchanged)
+  // to the live plan. Matches by slug across all days, primaries only.
+  const handleApplyPlanChange = (change) => {
+    const key = slug(change.exercise);
+    const nextDays = days.map((d) => ({
+      ...d,
+      exercises: d.exercises.map((ex) =>
+        slug(ex.name) === key
+          ? {
+              ...ex,
+              ...(change.sets != null ? { sets: Number(change.sets) } : {}),
+              ...(change.reps != null ? { reps: String(change.reps) } : {}),
+            }
+          : ex
+      ),
+    }));
+    return handleSavePlan(nextDays);
+  };
+
   const handleWeighIn = (weightLb) => {
     const previous = weighIns;
     const next = [...weighIns, { date: today, weight: String(weightLb) }].sort((a, b) => (a.date < b.date ? -1 : 1));
@@ -824,7 +843,16 @@ export default function RackedTracker({ session }) {
           </div>
         ) : null}
 
-        {view === "progress" && <ProgressView days={days} logs={logs} weighIns={weighIns} today={today} onAddWeighIn={handleWeighIn} />}
+        {view === "progress" && (
+          <ProgressView
+            days={days}
+            logs={logs}
+            weighIns={weighIns}
+            today={today}
+            onAddWeighIn={handleWeighIn}
+            onApplyPlanChange={handleApplyPlanChange}
+          />
+        )}
 
         {view === "edit" && <PlanEditor days={days} onSave={handleSavePlan} onClose={() => setView("workout")} />}
 

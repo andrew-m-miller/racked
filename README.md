@@ -106,6 +106,31 @@ After this, the anon key in the public bundle is harmless on its own — every
 read and write requires a signed-in session, and log/weigh-in rows are scoped
 to their owner.
 
+### AI coach (stretch) — one-time Edge Function setup
+
+The weekly recap (Progress → Weekly recap) works with zero setup: **Copy for
+Claude** pastes into the Claude app. The in-app **Get coach review** button
+needs the `coach` Edge Function deployed once, so your Anthropic API key stays
+server-side:
+
+**Dashboard path (no tooling):** Supabase → Edge Functions → Deploy a new
+function → name it `coach`, paste `supabase/functions/coach/index.ts`, deploy.
+Then Edge Functions → Secrets → add `ANTHROPIC_API_KEY` (create a key at
+console.anthropic.com). Leave "Verify JWT" on — only signed-in app users can
+call it.
+
+**CLI path:**
+
+```bash
+npx supabase login
+npx supabase link --project-ref fugrbmkhuhphskitpvzc
+npx supabase functions deploy coach
+npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Cost: one review sends a few KB and returns ~1K tokens — roughly a cent per
+week at Claude Opus 4.8 pricing.
+
 ### 2. Environment variables
 
 Copy `.env.example` to `.env` and fill in your credentials:
@@ -164,4 +189,9 @@ Live at `https://andrew-m-miller.github.io/racked/`.
   the database is no longer world-writable
 - Finisher logging: minutes + optional machine/mode, counted in the session
   summary and consistency calendar — a complete workout means lifts *and* cardio
+- Weekly recap: the week's sessions, volume, bodyweight trend, and per-lift
+  detail as a paste-ready block for a coaching chat in the Claude app
+- In-app AI coach: the recap goes to Claude Opus 4.8 via a Supabase Edge
+  Function (API key stays server-side); advice renders in-app with one-tap
+  "Apply to plan" tweaks wired into the plan editor's storage
 - Data persisted in Supabase Postgres, so your log follows you across devices
