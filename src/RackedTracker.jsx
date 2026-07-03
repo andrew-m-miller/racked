@@ -1,16 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
-import { PlayCircle, Check, Flame, Dumbbell, TrendingUp, TrendingDown, Minus, RotateCcw, Timer, Trophy } from "lucide-react";
-import { loadLogs, addLogEntry, clearAllLogs } from "./storage.js";
-import plan from "../exercises.json";
-
-const DAYS = plan.days;
-const CAT_COLOR = { Upper: "#5EC8D8", Lower: "#E8967A", Core: "#B9A6E0" };
+import { PlayCircle, Check, Flame, Dumbbell, TrendingUp, TrendingDown, Minus, RotateCcw, Timer, Trophy, BarChart3 } from "lucide-react";
+import { loadLogs, addLogEntry, clearAllLogs, loadWeighIns, addWeighIn } from "./storage.js";
+import { DAYS, CAT_COLOR, slug, isTimeBased, isBodyweightEx, exMetric, metricUnit, dayForDate } from "./planUtils.js";
+import { Sparkline, ExerciseChartModal } from "./charts.jsx";
+import ProgressView from "./ProgressView.jsx";
 
 // ---- Progression helpers ----
-function slug(name) {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-}
-
 // pull the top-of-range target number out of a reps string like "12", "10/leg", "30-45 sec"
 function targetNumber(repsStr) {
   const nums = (repsStr.match(/\d+/g) || []).map(Number);
@@ -42,15 +37,7 @@ function pickInitialDay(logs, today) {
   }
   if (!latestDate) return "A";
 
-  const votes = {};
-  for (const d of DAYS) {
-    for (const ex of d.exercises) {
-      for (const e of logs[slug(ex.name)] || []) {
-        if (e.date === latestDate) votes[d.id] = (votes[d.id] || 0) + 1;
-      }
-    }
-  }
-  const lastDay = Object.keys(votes).sort((a, b) => votes[b] - votes[a])[0];
+  const lastDay = dayForDate(logs, latestDate);
   if (!lastDay) return "A";
   if (latestDate === today) return lastDay;
   const order = DAYS.map((d) => d.id);
@@ -64,29 +51,14 @@ function sessionStats(day, logs, today) {
     const hist = logs[slug(ex.name)] || [];
     const todayEntries = hist.filter((h) => h.date === today);
     const prior = hist.filter((h) => h.date < today);
-    const timeBased = isTimeBased(ex);
-    const bodyweight = isBodyweightEx(ex);
-    if (!timeBased && !bodyweight) {
+    if (!isTimeBased(ex) && !isBodyweightEx(ex)) {
       for (const e of todayEntries) volume += (parseFloat(e.weight) || 0) * (parseFloat(e.reps) || 0);
     }
-    // Level-up metric: hold seconds for timed core, reps for bodyweight moves,
-    // weight for everything else.
-    const metric = (e) => (bodyweight && !timeBased ? parseFloat(e.reps) || 0 : parseFloat(e.weight) || 0);
-    const bestToday = todayEntries.reduce((m, e) => Math.max(m, metric(e)), 0);
-    const bestPrior = prior.reduce((m, e) => Math.max(m, metric(e)), 0);
+    const bestToday = todayEntries.reduce((m, e) => Math.max(m, exMetric(ex, e)), 0);
+    const bestPrior = prior.reduce((m, e) => Math.max(m, exMetric(ex, e)), 0);
     if (prior.length > 0 && bestToday > bestPrior) levelUps.push(ex.name);
   }
   return { volume: Math.round(volume), levelUps };
-}
-
-// Holds (Plank, Side Plank) log seconds in the `weight` field and reps in
-// the `reps` field; other bodyweight moves (e.g. Hanging Knee Raise) just log reps.
-function isTimeBased(ex) {
-  return /sec/i.test(ex.reps);
-}
-
-function isBodyweightEx(ex) {
-  return ex.start === "Bodyweight";
 }
 
 function computeSuggestion(ex, history) {
@@ -276,7 +248,7 @@ function RestTimer({ endsAt, onExtend, onSkip }) {
   );
 }
 
-function ExerciseCard({ ex, history, setsDone, onLog }) {
+function ExerciseCard({ ex, history, setsDone, onLog, onOpenChart }) {
   const complete = setsDone >= ex.sets;
   const timeBased = isTimeBased(ex);
   const showWeightBox = timeBased || !isBodyweightEx(ex);
@@ -337,6 +309,16 @@ function ExerciseCard({ ex, history, setsDone, onLog }) {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          {history.length >= 2 && (
+            <button
+              type="button"
+              onClick={onOpenChart}
+              aria-label={`Progress chart for ${ex.name}`}
+              style={{ background: "transparent", border: "none", padding: "2px 0", cursor: "pointer" }}
+            >
+              <Sparkline values={history.map((e) => exMetric(ex, e))} color={CAT_COLOR[ex.cat]} />
+            </button>
+          )}
           <span
             style={{
               fontFamily: "'JetBrains Mono', monospace",
@@ -456,15 +438,23 @@ export default function RackedTracker() {
   const [loaded, setLoaded] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [restEndsAt, setRestEndsAt] = useState(null);
+  const [view, setView] = useState("workout"); // "workout" | "progress"
+  const [weighIns, setWeighIns] = useState([]); // [{date, weight}]
+  const [chartEx, setChartEx] = useState(null); // exercise shown in the chart modal
+  const [prToast, setPrToast] = useState(null);
   const sessionStartRef = useRef(null); // first set logged in this app session
+  const prToastTimerRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
-    loadLogs()
-      .then((data) => {
+    // Weigh-ins degrade gracefully: if the table doesn't exist yet, the rest
+    // of the app still works.
+    Promise.all([loadLogs(), loadWeighIns().catch(() => [])])
+      .then(([logData, weighData]) => {
         if (!cancelled) {
-          setLogs(data);
-          setActiveDay(pickInitialDay(data, new Date().toISOString().slice(0, 10)));
+          setLogs(logData);
+          setWeighIns(weighData);
+          setActiveDay(pickInitialDay(logData, new Date().toISOString().slice(0, 10)));
         }
       })
       .catch(() => {
@@ -475,20 +465,34 @@ export default function RackedTracker() {
       });
     return () => {
       cancelled = true;
+      clearTimeout(prToastTimerRef.current);
     };
   }, []);
 
   const day = DAYS.find((d) => d.id === activeDay);
   const today = new Date().toISOString().slice(0, 10);
 
-  const handleLog = (exName, weight, reps) => {
-    const key = slug(exName);
+  const handleLog = (ex, weight, reps) => {
+    const key = slug(ex.name);
     const history = logs[key] || [];
     const previousLogs = logs;
-    const nextLogs = { ...logs, [key]: [...history, { date: today, weight, reps }] };
+    const entry = { date: today, weight, reps };
+    const nextLogs = { ...logs, [key]: [...history, entry] };
     // Update optimistically so the UI feels instant; roll back if the insert fails.
     setLogs(nextLogs);
     if (!sessionStartRef.current) sessionStartRef.current = Date.now();
+
+    // PR celebration: only against history from before today, so the first
+    // session (and each set after a PR today) doesn't re-trigger it.
+    const prior = history.filter((h) => h.date < today);
+    const bestPrior = prior.reduce((m, e) => Math.max(m, exMetric(ex, e)), 0);
+    const value = exMetric(ex, entry);
+    if (prior.length > 0 && value > bestPrior) {
+      setPrToast(`New PR — ${ex.name}: ${value} ${metricUnit(ex)}`);
+      if (navigator.vibrate) navigator.vibrate(100);
+      clearTimeout(prToastTimerRef.current);
+      prToastTimerRef.current = setTimeout(() => setPrToast(null), 4000);
+    }
     // Rest between sets — but not after the set that finishes the workout,
     // where the session summary takes over.
     const dayDone = day.exercises.every(
@@ -499,6 +503,18 @@ export default function RackedTracker() {
       .then(() => setSaveError(false))
       .catch(() => {
         setLogs(previousLogs);
+        setSaveError(true);
+      });
+  };
+
+  const handleWeighIn = (weightLb) => {
+    const previous = weighIns;
+    const next = [...weighIns, { date: today, weight: String(weightLb) }].sort((a, b) => (a.date < b.date ? -1 : 1));
+    setWeighIns(next);
+    addWeighIn(today, weightLb)
+      .then(() => setSaveError(false))
+      .catch(() => {
+        setWeighIns(previous);
         setSaveError(true);
       });
   };
@@ -571,14 +587,38 @@ export default function RackedTracker() {
               Racked
             </h1>
           </div>
-          <button
-            type="button"
-            onClick={resetAll}
-            title="Clear all history"
-            style={{ background: "transparent", border: "none", color: "#3A3F45", cursor: "pointer", padding: 4 }}
-          >
-            <RotateCcw size={16} />
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => setView(view === "workout" ? "progress" : "workout")}
+              title={view === "workout" ? "Progress" : "Back to workout"}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                background: view === "progress" ? "#1B1E22" : "transparent",
+                border: `1px solid ${view === "progress" ? "#5EC8D8" : "#2A2E33"}`,
+                borderRadius: 8,
+                color: view === "progress" ? "#5EC8D8" : "#9AA1AC",
+                cursor: "pointer",
+                padding: "5px 10px",
+                fontFamily: "'Inter', sans-serif",
+                fontSize: 12,
+                fontWeight: 500,
+              }}
+            >
+              <BarChart3 size={14} />
+              Progress
+            </button>
+            <button
+              type="button"
+              onClick={resetAll}
+              title="Clear all history"
+              style={{ background: "transparent", border: "none", color: "#3A3F45", cursor: "pointer", padding: 4 }}
+            >
+              <RotateCcw size={16} />
+            </button>
+          </div>
         </div>
         <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: "#6B7280", margin: "0 0 14px" }}>
           3-day full body · your gym, your numbers
@@ -604,6 +644,10 @@ export default function RackedTracker() {
           </div>
         )}
 
+        {view === "progress" && <ProgressView logs={logs} weighIns={weighIns} today={today} onAddWeighIn={handleWeighIn} />}
+
+        {view === "workout" && (
+        <>
         {/* Day selector */}
         <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
           {DAYS.map((d) => {
@@ -743,7 +787,8 @@ export default function RackedTracker() {
               ex={ex}
               history={history}
               setsDone={setsDoneFor(ex)}
-              onLog={(w, r) => handleLog(ex.name, w, r)}
+              onLog={(w, r) => handleLog(ex, w, r)}
+              onOpenChart={() => setChartEx(ex)}
             />
           );
         })}
@@ -767,6 +812,8 @@ export default function RackedTracker() {
             {day.finisher}
           </span>
         </div>
+        </>
+        )}
 
         <div
           style={{
@@ -790,6 +837,44 @@ export default function RackedTracker() {
           onExtend={() => setRestEndsAt((t) => t + 30000)}
           onSkip={() => setRestEndsAt(null)}
         />
+      )}
+
+      {prToast && (
+        <div
+          style={{
+            position: "fixed",
+            top: 14,
+            left: 0,
+            right: 0,
+            display: "flex",
+            justifyContent: "center",
+            padding: "0 16px",
+            pointerEvents: "none",
+            zIndex: 30,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: "#1B1E22",
+              border: "1px solid #FACC15",
+              borderRadius: 999,
+              padding: "8px 16px",
+              boxShadow: "0 8px 24px rgba(0, 0, 0, 0.5)",
+            }}
+          >
+            <Trophy size={14} color="#FACC15" />
+            <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, fontWeight: 600, color: "#F5F6F7" }}>
+              {prToast}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {chartEx && (
+        <ExerciseChartModal ex={chartEx} history={logs[slug(chartEx.name)] || []} onClose={() => setChartEx(null)} />
       )}
     </div>
   );
