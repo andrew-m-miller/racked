@@ -7,11 +7,11 @@ import { supabase } from "./supabaseClient.js";
 // copies it for a conversational review in the Claude app. Tier 2: the same
 // recap goes to the `coach` Edge Function (Claude Opus 4.8 server-side) and
 // the advice renders in-app, with one-tap-applicable plan tweaks.
-export default function RecapSection({ days, logs, weighIns, today, onApplyPlanChange }) {
+export default function RecapSection({ days, logs, weighIns, today, meta, onApplyPlanChange }) {
   const [copied, setCopied] = useState(false);
   const [coach, setCoach] = useState({ state: "idle" }); // idle | loading | error | done
   const [applied, setApplied] = useState({}); // suggestion index -> true
-  const recap = useMemo(() => buildWeeklyRecap({ days, logs, weighIns, today }), [days, logs, weighIns, today]);
+  const recap = useMemo(() => buildWeeklyRecap({ days, logs, weighIns, today, meta }), [days, logs, weighIns, today, meta]);
 
   const askCoach = async () => {
     setCoach({ state: "loading" });

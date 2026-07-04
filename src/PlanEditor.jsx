@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { ChevronUp, ChevronDown, Trash2, Plus, Check } from "lucide-react";
-import { CAT_COLOR } from "./planUtils.js";
+import { ChevronUp, ChevronDown, Trash2, Plus, Check, Sparkles } from "lucide-react";
+import { CAT_COLOR, PLATE_COLORS, MAX_DAYS } from "./planUtils.js";
 
 const CATS = ["Upper", "Lower", "Core"];
 
@@ -105,7 +105,7 @@ function ExerciseEditor({ ex, index, count, onChange, onMove, onRemove }) {
   );
 }
 
-export default function PlanEditor({ days, onSave, onClose }) {
+export default function PlanEditor({ days, meta, onSave, onClose, onDesign }) {
   const [draft, setDraft] = useState(() => JSON.parse(JSON.stringify(days)));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -128,18 +128,48 @@ export default function PlanEditor({ days, onSave, onClose }) {
       ],
     });
 
+  // Day ids are letters assigned once and never renumbered, so finisher-a/-b/...
+  // history keeps resolving even after days are removed and re-added.
+  const addDay = () => {
+    if (draft.length >= MAX_DAYS) return;
+    const id = [..."ABCDE"].find((letter) => !draft.some((d) => d.id === letter));
+    setDraft([
+      ...draft,
+      {
+        id,
+        label: `Day ${draft.length + 1}`,
+        name: `Day ${draft.length + 1}`,
+        plate: PLATE_COLORS.find((p) => !draft.some((d) => d.plate === p)) ?? PLATE_COLORS[draft.length],
+        finisher: "10–15 min cardio of your choice",
+        exercises: [
+          { name: "New Exercise", cat: "Upper", sets: 3, reps: "12", start: "20–30 lb", url: "https://www.youtube.com/results?search_query=exercise+form" },
+        ],
+      },
+    ]);
+  };
+
+  const removeDay = (di) => {
+    if (draft.length <= 1) return;
+    if (window.confirm && !window.confirm(`Remove ${draft[di].name}? Its exercises' history is kept.`)) return;
+    setDraft(draft.filter((_, i) => i !== di));
+  };
+
   const valid = draft.every((d) => d.exercises.length > 0 && d.exercises.every((e) => e.name.trim() && Number(e.sets) >= 1));
 
   const save = async () => {
     if (!valid || saving) return;
-    // Normalize sets back to numbers; everything else stays as typed.
-    const cleaned = draft.map((d) => ({
+    // Normalize sets back to numbers and relabel days by position; everything
+    // else stays as typed. A day-count change follows through to meta so the
+    // streak target tracks the plan (description is left as-is — cosmetic).
+    const cleaned = draft.map((d, i) => ({
       ...d,
+      label: `Day ${i + 1}`,
       exercises: d.exercises.map((e) => ({ ...e, sets: Number(e.sets), name: e.name.trim() })),
     }));
+    const nextMeta = cleaned.length !== meta?.daysPerWeek ? { ...meta, daysPerWeek: cleaned.length } : meta;
     setSaving(true);
     try {
-      await onSave(cleaned);
+      await onSave(cleaned, nextMeta);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {
@@ -212,23 +242,48 @@ export default function PlanEditor({ days, onSave, onClose }) {
         Changes save to the cloud and apply everywhere — no deploy needed. Progression history follows the exercise name.
       </p>
 
+      {/* AI plan designer entry point — same flow as onboarding, replace mode */}
+      <button
+        type="button"
+        onClick={onDesign}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          width: "100%",
+          background: "#1B1E22",
+          border: "1px solid #B9A6E0",
+          borderRadius: 8,
+          color: "#B9A6E0",
+          padding: "10px 12px",
+          fontFamily: "'Inter', sans-serif",
+          fontWeight: 600,
+          fontSize: 13,
+          cursor: "pointer",
+        }}
+      >
+        <Sparkles size={14} />
+        Design a new plan with AI
+      </button>
+      <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, color: "#6B7280", margin: "6px 0 18px", textAlign: "center" }}>
+        Replaces your current plan — history is kept.
+      </p>
+
       {draft.map((day, di) => (
         <div key={day.id} style={{ marginBottom: 22 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <span style={{ width: 12, height: 12, borderRadius: "50%", background: day.plate, display: "inline-block" }} />
-            <h3
-              style={{
-                fontFamily: "'Oswald', sans-serif",
-                fontWeight: 600,
-                fontSize: 15,
-                color: "#F5F6F7",
-                margin: 0,
-                textTransform: "uppercase",
-                letterSpacing: "0.02em",
-              }}
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginBottom: 8 }}>
+            <span style={{ width: 12, height: 12, borderRadius: "50%", background: day.plate, display: "inline-block", flexShrink: 0, marginBottom: 9 }} />
+            <Field label={day.label} value={day.name} onChange={(v) => setDay(di, { ...day, name: v })} />
+            <button
+              type="button"
+              style={{ ...iconButton, color: "#EF4444", borderColor: "#EF444455", opacity: draft.length === 1 ? 0.3 : 1, marginBottom: 1 }}
+              disabled={draft.length === 1}
+              onClick={() => removeDay(di)}
+              aria-label={`Remove ${day.name}`}
             >
-              {day.name}
-            </h3>
+              <Trash2 size={14} />
+            </button>
           </div>
 
           {day.exercises.map((ex, ei) => (
@@ -271,6 +326,30 @@ export default function PlanEditor({ days, onSave, onClose }) {
           </div>
         </div>
       ))}
+
+      <button
+        type="button"
+        onClick={addDay}
+        disabled={draft.length >= MAX_DAYS}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          width: "100%",
+          justifyContent: "center",
+          background: "transparent",
+          border: "1px dashed #2A2E33",
+          borderRadius: 10,
+          color: "#9AA1AC",
+          fontFamily: "'Inter', sans-serif",
+          fontSize: 12.5,
+          padding: "9px 0",
+          cursor: draft.length >= MAX_DAYS ? "default" : "pointer",
+          opacity: draft.length >= MAX_DAYS ? 0.4 : 1,
+        }}
+      >
+        <Plus size={14} /> Add day{draft.length >= MAX_DAYS ? ` (max ${MAX_DAYS})` : ""}
+      </button>
     </div>
   );
 }

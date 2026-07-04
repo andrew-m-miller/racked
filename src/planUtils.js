@@ -1,9 +1,15 @@
 import plan from "../exercises.json";
 
 // The bundled plan is the seed/fallback; the live plan is loaded from
-// Supabase (see storage.loadPlan) and passed around as `days`.
+// Supabase (see storage.loadPlan) and passed around as `days` + `meta`.
 export const SEED_DAYS = plan.days;
+export const SEED_META = plan.meta;
 export const CAT_COLOR = { Upper: "#5EC8D8", Lower: "#E8967A", Core: "#B9A6E0" };
+
+// Plans run 2–5 days; ids are letters A–E assigned by index (slug-safe, so
+// finisher-a/-b/... history keeps resolving). First three plates match the seed.
+export const PLATE_COLORS = ["#3B82F6", "#FACC15", "#22C55E", "#E8967A", "#B9A6E0"];
+export const MAX_DAYS = 5;
 
 export function slug(name) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");

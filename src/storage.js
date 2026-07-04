@@ -148,20 +148,29 @@ export async function addWeighIn(date, weightLb) {
 
 // ---- plan ----
 
-// The plan lives in a single-row table as jsonb ({days: [...]}); exercises.json
-// is the seed/fallback when no row exists yet.
+// The plan lives one row per user as jsonb ({meta: {...}, days: [...]});
+// exercises.json is the seed/fallback when no row exists yet. RLS scopes the
+// select to the signed-in user, so no explicit filter is needed. The
+// localStorage snapshot (racked-snapshot-v1) stays device-scoped — same
+// accepted limitation as logs today.
 export async function loadPlan() {
   return fetchWithSnapshot("plan", async () => {
-    const { data, error } = await supabase.from("plan").select("data").eq("id", 1).maybeSingle();
+    const { data, error } = await supabase.from("plan").select("data").maybeSingle();
     if (error) throw error;
     return data?.data ?? null;
   });
 }
 
 export async function savePlan(planData) {
+  // getSession reads the cached session locally — no network round-trip.
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not signed in");
   const { error } = await supabase
     .from("plan")
-    .upsert({ id: 1, data: planData, updated_at: new Date().toISOString() });
+    .upsert(
+      { user_id: session.user.id, data: planData, updated_at: new Date().toISOString() },
+      { onConflict: "user_id" }
+    );
   if (error) throw error;
   saveSnapshot("plan", planData);
 }

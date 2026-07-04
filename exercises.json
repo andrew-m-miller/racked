@@ -1,4 +1,10 @@
 {
+  "meta": {
+    "goal": "fat_loss",
+    "daysPerWeek": 3,
+    "experience": "returning",
+    "description": "3-day alternating full-body (A/B/C), 3 sessions/week + cardio finisher each session. Goal: fat loss while building strength."
+  },
   "days": [
     {
       "id": "A",

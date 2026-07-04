@@ -30,9 +30,9 @@ function prevWeek(key) {
   return toKey(d);
 }
 
-// A streak week = 3+ workouts. The current week doesn't break the streak
-// while it's still in progress.
-function computeStreaks(sessionDates, today) {
+// A streak week = target+ workouts (the plan's sessions/week). The current
+// week doesn't break the streak while it's still in progress.
+function computeStreaks(sessionDates, today, target) {
   const perWeek = {};
   for (const date of sessionDates) {
     const k = weekKey(date);
@@ -42,23 +42,23 @@ function computeStreaks(sessionDates, today) {
   const thisWeek = weekKey(today);
   let current = 0;
   let w = thisWeek;
-  if ((perWeek[w] || 0) >= 3) {
+  if ((perWeek[w] || 0) >= target) {
     current++;
     w = prevWeek(w);
   } else {
     w = prevWeek(w); // week in progress — look back without breaking
   }
-  while ((perWeek[w] || 0) >= 3) {
+  while ((perWeek[w] || 0) >= target) {
     current++;
     w = prevWeek(w);
   }
 
   let best = 0;
   for (const k of Object.keys(perWeek)) {
-    if ((perWeek[k] || 0) < 3 || (perWeek[prevWeek(k)] || 0) >= 3) continue; // only start runs at their first week
+    if ((perWeek[k] || 0) < target || (perWeek[prevWeek(k)] || 0) >= target) continue; // only start runs at their first week
     let run = 0;
     let cursor = k;
-    while ((perWeek[cursor] || 0) >= 3) {
+    while ((perWeek[cursor] || 0) >= target) {
       run++;
       const d = toDate(cursor);
       d.setDate(d.getDate() + 7);
@@ -207,18 +207,19 @@ function BodyweightSection({ weighIns, today, onAddWeighIn }) {
   );
 }
 
-function CalendarSection({ days, logs, today }) {
+function CalendarSection({ days, logs, today, meta }) {
   const [offset, setOffset] = useState(0); // months back from current
   const plate = Object.fromEntries(days.map((d) => [d.id, d.plate]));
 
-  // Map each training date to the day (A/B/C) that was performed.
+  // Map each training date to the plan day that was performed.
   const dates = new Set();
   for (const entries of Object.values(logs)) for (const e of entries) dates.add(e.date);
   const dayByDate = {};
   for (const d of dates) dayByDate[d] = dayForDate(days, logs, d);
 
   const sessions = [...dates];
-  const streaks = computeStreaks(sessions, today);
+  const target = meta?.daysPerWeek ?? days.length;
+  const streaks = computeStreaks(sessions, today, target);
 
   const base = toDate(today);
   const month = new Date(base.getFullYear(), base.getMonth() - offset, 1);
@@ -251,7 +252,7 @@ function CalendarSection({ days, logs, today }) {
         <StatBlock label="total workouts" value={sessions.length} />
       </div>
       <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11.5, color: "#6B7280", marginBottom: 14 }}>
-        A streak week = 3+ workouts (Mon–Sun).
+        A streak week = {target}+ workouts (Mon–Sun).
       </div>
 
       <div style={{ background: "#1B1E22", border: "1px solid #2A2E33", borderRadius: 10, padding: "12px 14px 14px" }}>
@@ -325,12 +326,12 @@ function CalendarSection({ days, logs, today }) {
   );
 }
 
-export default function ProgressView({ days, logs, weighIns, today, onAddWeighIn, onApplyPlanChange }) {
+export default function ProgressView({ days, logs, weighIns, today, meta, onAddWeighIn, onApplyPlanChange }) {
   return (
     <div>
       <BodyweightSection weighIns={weighIns} today={today} onAddWeighIn={onAddWeighIn} />
-      <CalendarSection days={days} logs={logs} today={today} />
-      <RecapSection days={days} logs={logs} weighIns={weighIns} today={today} onApplyPlanChange={onApplyPlanChange} />
+      <CalendarSection days={days} logs={logs} today={today} meta={meta} />
+      <RecapSection days={days} logs={logs} weighIns={weighIns} today={today} meta={meta} onApplyPlanChange={onApplyPlanChange} />
     </div>
   );
 }

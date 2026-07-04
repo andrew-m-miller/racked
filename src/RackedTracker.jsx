@@ -2,16 +2,17 @@ import React, { useState, useEffect, useRef } from "react";
 import { PlayCircle, Check, Flame, Dumbbell, TrendingUp, TrendingDown, Minus, RotateCcw, Timer, Trophy, BarChart3, Pencil, Repeat, CloudOff, LogOut } from "lucide-react";
 import { loadLogs, addLogEntry, clearAllLogs, loadWeighIns, addWeighIn, loadPlan, savePlan, flushPending, onPendingChange } from "./storage.js";
 import { supabase } from "./supabaseClient.js";
-import { SEED_DAYS, CAT_COLOR, slug, isTimeBased, isBodyweightEx, exMetric, metricUnit, dayForDate, finisherSlug } from "./planUtils.js";
+import { SEED_DAYS, SEED_META, CAT_COLOR, slug, isTimeBased, isBodyweightEx, exMetric, metricUnit, dayForDate, finisherSlug } from "./planUtils.js";
 import { computeSuggestion, targetNumber } from "./progression.js";
 import { Sparkline, ExerciseChartModal } from "./charts.jsx";
 import ProgressView from "./ProgressView.jsx";
 import PlanEditor from "./PlanEditor.jsx";
+import Onboarding from "./Onboarding.jsx";
 
 const REST_SECONDS = 90;
 
 // Pick the day tab to open on: the day still in progress if there are sets
-// logged today, otherwise the next day in the A→B→C rotation after the last
+// logged today, otherwise the next day in the rotation after the last
 // session. Exercises shared across days (e.g. Seated Cable Row on A and C)
 // would make a single-slug lookup ambiguous, so the day is chosen by majority
 // vote over the latest session's entries.
@@ -22,10 +23,10 @@ function pickInitialDay(days, logs, today) {
       if (!latestDate || e.date > latestDate) latestDate = e.date;
     }
   }
-  if (!latestDate) return "A";
+  if (!latestDate) return days[0]?.id;
 
   const lastDay = dayForDate(days, logs, latestDate);
-  if (!lastDay) return "A";
+  if (!lastDay) return days[0]?.id;
   if (latestDate === today) return lastDay;
   const order = days.map((d) => d.id);
   return order[(order.indexOf(lastDay) + 1) % order.length];
@@ -511,13 +512,15 @@ function FinisherCard({ day, entries, onLog }) {
 }
 
 export default function RackedTracker({ session }) {
-  const [activeDay, setActiveDay] = useState("A");
+  const [activeDay, setActiveDay] = useState(SEED_DAYS[0].id);
   const [logs, setLogs] = useState({}); // { slug: [{date,weight,reps}, ...] }
   const [loaded, setLoaded] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [restEndsAt, setRestEndsAt] = useState(null);
-  const [view, setView] = useState("workout"); // "workout" | "progress" | "edit"
+  const [view, setView] = useState("workout"); // "workout" | "progress" | "edit" | "onboard"
+  const [onboardMode, setOnboardMode] = useState("new"); // "new" first-run · "replace" from the plan editor
   const [days, setDays] = useState(SEED_DAYS); // live plan; Supabase row wins over the bundled seed
+  const [planMeta, setPlanMeta] = useState(SEED_META); // goal/daysPerWeek/description for the live plan
   const [swaps, setSwaps] = useState({}); // session-scoped substitutions: { primarySlug: altName }
   const [weighIns, setWeighIns] = useState([]); // [{date, weight}]
   const [chartEx, setChartEx] = useState(null); // exercise shown in the chart modal
@@ -542,14 +545,22 @@ export default function RackedTracker({ session }) {
     let cancelled = false;
     // Weigh-ins and the cloud plan degrade gracefully: if their tables don't
     // exist yet, the rest of the app still works (plan falls back to the seed).
-    Promise.all([loadLogs(), loadWeighIns().catch(() => []), loadPlan().catch(() => null)])
+    // loadPlan maps a failure to undefined so "no row yet" (null) stays
+    // distinguishable — only a genuinely blank account gets onboarding.
+    Promise.all([loadLogs(), loadWeighIns().catch(() => []), loadPlan().catch(() => undefined)])
       .then(([logData, weighData, planData]) => {
         if (!cancelled) {
           const liveDays = planData?.days?.length ? planData.days : SEED_DAYS;
           setLogs(logData);
           setWeighIns(weighData);
           setDays(liveDays);
+          setPlanMeta(planData?.meta ?? SEED_META);
           setActiveDay(pickInitialDay(liveDays, logData, new Date().toISOString().slice(0, 10)));
+          const isNewUser = planData === null && Object.keys(logData).length === 0;
+          if (isNewUser) {
+            setOnboardMode("new");
+            setView("onboard");
+          }
         }
       })
       .catch(() => {
@@ -634,11 +645,14 @@ export default function RackedTracker({ session }) {
       });
   };
 
-  const handleSavePlan = async (nextDays) => {
+  const handleSavePlan = async (nextDays, nextMeta = planMeta) => {
     try {
-      await savePlan({ days: nextDays });
+      await savePlan({ meta: nextMeta, days: nextDays });
       setDays(nextDays);
+      setPlanMeta(nextMeta);
       setSwaps({});
+      // The edited plan may have dropped the day that was open.
+      if (!nextDays.some((d) => d.id === activeDay)) setActiveDay(nextDays[0]?.id);
       setSaveError(false);
     } catch (err) {
       setSaveError(true);
@@ -751,6 +765,7 @@ export default function RackedTracker({ session }) {
               Racked
             </h1>
           </div>
+          {view !== "onboard" && (
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <button
               type="button"
@@ -800,10 +815,13 @@ export default function RackedTracker({ session }) {
               <RotateCcw size={16} />
             </button>
           </div>
+          )}
         </div>
+        {view !== "onboard" && (
         <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: "#6B7280", margin: "0 0 14px" }}>
-          3-day full body · your gym, your numbers
+          {days.length}-day plan · your gym, your numbers
         </p>
+        )}
 
         {pendingSync > 0 ? (
           <div
@@ -849,12 +867,42 @@ export default function RackedTracker({ session }) {
             logs={logs}
             weighIns={weighIns}
             today={today}
+            meta={planMeta}
             onAddWeighIn={handleWeighIn}
             onApplyPlanChange={handleApplyPlanChange}
           />
         )}
 
-        {view === "edit" && <PlanEditor days={days} onSave={handleSavePlan} onClose={() => setView("workout")} />}
+        {view === "edit" && (
+          <PlanEditor
+            days={days}
+            meta={planMeta}
+            onSave={handleSavePlan}
+            onClose={() => setView("workout")}
+            onDesign={() => {
+              setOnboardMode("replace");
+              setView("onboard");
+            }}
+          />
+        )}
+
+        {view === "onboard" && (
+          <Onboarding
+            mode={onboardMode}
+            onAccept={async ({ meta, days: nextDays }) => {
+              await handleSavePlan(nextDays, meta);
+              setActiveDay(nextDays[0]?.id);
+              setView("workout");
+            }}
+            onSkip={() => {
+              // Save the seed as this user's plan so onboarding is offered once;
+              // a failed save just means they see it again next visit.
+              handleSavePlan(SEED_DAYS, SEED_META).catch(() => {});
+              setView("workout");
+            }}
+            onCancel={() => setView("edit")}
+          />
+        )}
 
         {view === "workout" && (
         <>
@@ -871,7 +919,7 @@ export default function RackedTracker({ session }) {
                   background: active ? "#1B1E22" : "transparent",
                   border: `2px solid ${active ? d.plate : "#2A2E33"}`,
                   borderRadius: 10,
-                  padding: "10px 6px",
+                  padding: "8px 2px",
                   cursor: "pointer",
                   display: "flex",
                   flexDirection: "column",
@@ -896,7 +944,7 @@ export default function RackedTracker({ session }) {
                 >
                   {d.id}
                 </div>
-                <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, color: active ? "#F5F6F7" : "#6B7280", fontWeight: 500 }}>
+                <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 10, color: active ? "#F5F6F7" : "#6B7280", fontWeight: 500 }}>
                   {d.label}
                 </span>
               </button>

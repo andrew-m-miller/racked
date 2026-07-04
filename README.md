@@ -1,6 +1,7 @@
 # Racked
 
-A personal 3-day full-body workout tracker with weight/rep progression suggestions.
+A personal workout tracker with weight/rep progression suggestions and an AI
+plan designer.
 
 ## Setup
 
@@ -131,6 +132,60 @@ npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 Cost: one review sends a few KB and returns ~1K tokens — around half a cent
 per week at Claude Sonnet 5 pricing ($3/$15 per MTok).
 
+### Phase 5 — per-user plans + AI plan designer
+
+Phase 5 makes the plan per-user (one `plan` row per account instead of a single
+shared row) and adds the AI plan-designer onboarding: new users answer a short
+goals form, Claude designs a 2–5-day plan, and a background search upgrades the
+plan's YouTube search links to real tutorial videos, cached in `video_links`.
+
+Run in the SQL Editor (the backfill claims the existing row for the oldest
+account, so your `auth.users` row must exist — same ordering caveat as Phase 4):
+
+```sql
+alter table plan add column user_id uuid default auth.uid();
+update plan set user_id = (select id from auth.users order by created_at limit 1)
+  where user_id is null;
+alter table plan alter column user_id set not null;
+alter table plan drop constraint plan_pkey;
+alter table plan drop column id;
+alter table plan add primary key (user_id);
+drop policy "Signed in" on plan;
+create policy "Own rows" on plan for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Shared cache of found tutorial videos, keyed by exercise slug.
+-- RLS on with no policies: only the find-videos edge function
+-- (service role) reads/writes it.
+create table video_links (
+  slug text primary key,
+  url text not null,
+  title text,
+  created_at timestamptz default now()
+);
+alter table video_links enable row level security;
+```
+
+Run the SQL and push the new client together: in the gap the old client fails
+soft (the plan read falls back to the bundled seed, saves show the error
+banner), so nothing breaks — it's just briefly read-only for plans.
+
+Then deploy the two new Edge Functions (same paths as the coach — dashboard
+paste or CLI):
+
+```bash
+npx supabase functions deploy plan-designer
+npx supabase functions deploy find-videos
+```
+
+The `ANTHROPIC_API_KEY` secret is shared with `coach` — no new secret needed.
+`find-videos` also uses the auto-injected `SUPABASE_URL` /
+`SUPABASE_SERVICE_ROLE_KEY` to read and write the `video_links` cache.
+
+Cost: one plan generation is a few thousand tokens (~a cent); the background
+video search runs ~15–35 web searches per new plan (≈$0.15–0.35 at $10/1k
+searches), and the cache makes repeat exercises free.
+
 ### 2. Environment variables
 
 Copy `.env.example` to `.env` and fill in your credentials:
@@ -163,7 +218,9 @@ Live at `https://andrew-m-miller.github.io/racked/`.
 
 ## Features
 
-- 3-day alternating full-body plan (Day 1/2/3), 6 exercises + cardio finisher each
+- 2–5-day workout plan — AI-designed at onboarding (goals form → Claude builds
+  the split, sets/reps, starting weights, and tutorial links) or the bundled
+  3-day full-body default, 5–7 exercises + cardio finisher each day
 - Weight/rep inputs pre-filled with the recommended next set, still fully editable
 - Progression suggestions: +5 lb (upper) / +10 lb (lower) once you hit the top of
   the rep range, +5-10 sec on core holds, automatic 10% deload after 2 missed

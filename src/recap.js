@@ -75,7 +75,7 @@ function weekVolume(logs, index, from, to) {
   return Math.round(volume);
 }
 
-export function buildWeeklyRecap({ days, logs, weighIns, today }) {
+export function buildWeeklyRecap({ days, logs, weighIns, today, meta }) {
   const start = weekStart(today);
   const prevStart = shiftDays(start, -7);
   const prevEnd = shiftDays(start, -1);
@@ -150,7 +150,7 @@ export function buildWeeklyRecap({ days, logs, weighIns, today }) {
     "",
     `WEEK OF ${fmtDate(start)} – ${fmtDate(today)}`,
     "",
-    "Program: 3-day alternating full-body (A/B/C), 3 sessions/week + cardio finisher each session. Goal: fat loss while building strength.",
+    `Program: ${meta?.description ?? `${days.length}-day plan`}`,
     "Progression rules the app follows: +5 lb upper / +10 lb lower at rep target, +5-10 sec on core holds, 10% deload after 2 straight misses; a hit rated \"brutal\" holds the weight and counts a half-miss, an \"easy\" hit doubles the lower-body jump.",
     "",
     `Sessions: ${sessionDates.length} of ${days.length} planned${sessionLines.length ? ` — ${sessionLines.join(", ")}` : ""}`,
