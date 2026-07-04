@@ -4,3 +4,4 @@ dist
 .claude/settings.local.json
 CONTEXT.md
 .env
+supabase/.temp
