@@ -128,8 +128,8 @@ npx supabase functions deploy coach
 npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Cost: one review sends a few KB and returns ~1K tokens — roughly a cent per
-week at Claude Opus 4.8 pricing.
+Cost: one review sends a few KB and returns ~1K tokens — around half a cent
+per week at Claude Sonnet 5 pricing ($3/$15 per MTok).
 
 ### 2. Environment variables
 

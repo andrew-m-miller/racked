@@ -77,7 +77,9 @@ Deno.serve(async (req) => {
 
     const client = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") });
     const response = await client.messages.parse({
-      model: "claude-opus-4-8",
+      // Sonnet 5: a fifth to a third of Opus pricing while keeping adaptive
+      // thinking and structured outputs — the sweet spot for a weekly review.
+      model: "claude-sonnet-5",
       max_tokens: 8000,
       thinking: { type: "adaptive" },
       system: SYSTEM,
