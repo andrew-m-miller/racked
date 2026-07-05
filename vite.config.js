@@ -4,6 +4,13 @@ import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
   base: "/racked/",
+  // Vitest piggybacks on this config; pure-logic tests run in node, and the
+  // few browser-global cases (localStorage, navigator) opt into jsdom with a
+  // per-file `// @vitest-environment jsdom` docblock. The npm scripts pin TZ
+  // to a non-UTC zone so date tests catch UTC-drift regressions.
+  test: {
+    environment: "node",
+  },
   plugins: [
     react(),
     VitePWA({
