@@ -100,7 +100,7 @@ function RestTimer({ endsAt, onExtend, onSkip }) {
         right: 0,
         display: "flex",
         justifyContent: "center",
-        padding: "0 16px 16px",
+        padding: "0 16px calc(16px + env(safe-area-inset-bottom))",
         pointerEvents: "none",
         zIndex: 10,
       }}
@@ -735,7 +735,9 @@ export default function RackedTracker({ session }) {
       style={{
         minHeight: "100vh",
         background: "#101214",
-        padding: restEndsAt ? "28px 16px 116px" : "28px 16px 60px",
+        padding: restEndsAt
+          ? "calc(28px + env(safe-area-inset-top)) 16px calc(116px + env(safe-area-inset-bottom))"
+          : "calc(28px + env(safe-area-inset-top)) 16px calc(60px + env(safe-area-inset-bottom))",
         display: "flex",
         justifyContent: "center",
       }}
@@ -1108,7 +1110,7 @@ export default function RackedTracker({ session }) {
         <div
           style={{
             position: "fixed",
-            top: 14,
+            top: "calc(14px + env(safe-area-inset-top))",
             left: 0,
             right: 0,
             display: "flex",
