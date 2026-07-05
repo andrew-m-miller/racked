@@ -45,17 +45,6 @@ export function computeSuggestion(ex, history) {
   const hitTarget = target ? lastPrimary >= target : true;
   const lastEffort = last.effort == null ? null : Number(last.effort); // -1 easy · 0 right · 1 brutal
 
-  // consecutive misses, most recent first; a hit that was rated "brutal"
-  // counts as a half-miss toward the deload trigger
-  let missScore = 0;
-  for (let i = history.length - 1; i >= 0; i--) {
-    const v = timeBased ? parseFloat(history[i].weight) || 0 : parseFloat(history[i].reps) || 0;
-    const t = target || 0;
-    if (v < t) missScore += 1;
-    else if (Number(history[i].effort) === 1) missScore += 0.5;
-    else break;
-  }
-
   if (timeBased) {
     const inc = INCREMENT[ex.cat] || 5;
     if (hitTarget) {
@@ -82,6 +71,18 @@ export function computeSuggestion(ex, history) {
   }
 
   const inc = INCREMENT[ex.cat] || 5;
+
+  // consecutive misses, most recent first; a hit that was rated "brutal"
+  // counts as a half-miss toward the deload trigger. Only weighted lifts
+  // deload, so this scan lives below the timed/bodyweight early returns.
+  let missScore = 0;
+  for (let i = history.length - 1; i >= 0; i--) {
+    const v = parseFloat(history[i].reps) || 0;
+    const t = target || 0;
+    if (v < t) missScore += 1;
+    else if (Number(history[i].effort) === 1) missScore += 0.5;
+    else break;
+  }
 
   if (missScore >= 2) {
     const deload = Math.round((lastWeight * 0.9) / 2.5) * 2.5;

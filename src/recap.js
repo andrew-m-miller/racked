@@ -6,8 +6,6 @@ import { computeSuggestion, targetNumber } from "./progression.js";
 // Claude app: sessions vs planned, volume, per-lift detail with the app's own
 // next-session suggestion, finishers, and bodyweight trend.
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 function toDate(dateStr) {
   return new Date(dateStr + "T00:00:00");
 }
@@ -67,7 +65,10 @@ function weekVolume(logs, index, from, to) {
   let volume = 0;
   for (const [key, entries] of Object.entries(logs)) {
     const def = index[key]?.ex;
-    if (key.startsWith("finisher-") || (def && (isTimeBased(def) || isBodyweightEx(def)))) continue;
+    // Skip finishers, timed/bodyweight lifts, and orphaned slugs (renamed or
+    // dropped from the plan) — the latter have no def, so their reps/seconds
+    // would otherwise be multiplied in as phantom weighted volume.
+    if (key.startsWith("finisher-") || !def || isTimeBased(def) || isBodyweightEx(def)) continue;
     for (const e of entries) {
       if (e.date >= from && e.date <= to) volume += (parseFloat(e.weight) || 0) * (parseFloat(e.reps) || 0);
     }

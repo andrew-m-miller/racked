@@ -44,7 +44,11 @@ export function onPendingChange(cb) {
 // Safari "Load failed", Firefox "NetworkError...".
 export function isNetworkError(err) {
   if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
-  return /fetch|network|load failed|connection|timed? ?out/i.test(String(err?.message || err));
+  // fetch() rejects with a TypeError when the connection itself fails.
+  if (err instanceof TypeError) return true;
+  // Match only the known fetch-failure wordings, not any message that happens
+  // to mention "connection"/"timeout" (a real server error must still surface).
+  return /failed to fetch|networkerror|load failed/i.test(String(err?.message || err));
 }
 
 // Run `op` through `perform`, queueing it if the network is down. Anything
@@ -54,7 +58,15 @@ export async function runOrQueue(perform, op) {
   const q = read();
   if (q.length > 0) {
     write([...q, op]);
-    await flush(perform);
+    // This op is now safely queued; the flush is a best-effort drain. If an
+    // *earlier* op is permanently rejected, flush drops it and throws — but
+    // that must not fail (and roll back) the write we just accepted, which will
+    // still retry on the next flush.
+    try {
+      await flush(perform);
+    } catch {
+      // earlier op dropped inside flush — current op stays queued
+    }
     return { queued: pendingCount() > 0 };
   }
   try {
