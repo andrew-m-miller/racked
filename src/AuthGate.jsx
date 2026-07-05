@@ -26,12 +26,20 @@ export default function AuthGate({ children }) {
   return children(session);
 }
 
+// Tapping the magic link from Mail always opens Safari, never the installed
+// home-screen app (iOS has no deep-link mechanism into a standalone web app),
+// so default installed-PWA users straight into the code flow instead.
+const isStandalone =
+  typeof window !== "undefined" &&
+  (window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches);
+
 function SignIn() {
   const [email, setEmail] = useState("");
   const [state, setState] = useState("idle"); // idle | sending | sent | error
   const [errorMsg, setErrorMsg] = useState("");
-  const [codeMode, setCodeMode] = useState(false); // type the emailed code instead of tapping the link
+  const [codeMode, setCodeMode] = useState(isStandalone); // type the emailed code instead of tapping the link
   const [code, setCode] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
 
   const send = async () => {
     const addr = email.trim();
@@ -45,6 +53,7 @@ function SignIn() {
       setErrorMsg(error.message);
       setState("error");
     } else {
+      setCodeSent(true);
       setState("sent");
     }
   };
@@ -63,6 +72,12 @@ function SignIn() {
     }
     // success: onAuthStateChange flips the gate, nothing to do here
   };
+
+  // Once a code has actually been emailed, the codeMode button verifies it;
+  // until then it still needs to trigger the initial send (same call as the
+  // magic-link path — the email carries both the link and the code).
+  const verifying = codeMode && codeSent;
+  const primaryAction = verifying ? verifyCode : send;
 
   return (
     <div
@@ -122,6 +137,27 @@ function SignIn() {
           </div>
         )}
 
+        {codeMode && codeSent && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              background: "#14321C",
+              border: "1px solid #22C55E",
+              borderRadius: 10,
+              padding: "14px 16px",
+              textAlign: "left",
+              marginBottom: 12,
+            }}
+          >
+            <Mail size={18} color="#22C55E" style={{ flexShrink: 0 }} />
+            <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: "#F5F6F7" }}>
+              Code sent to <strong>{email.trim()}</strong> — enter it below (no need to leave the app).
+            </span>
+          </div>
+        )}
+
         {state !== "sent" || codeMode ? (
           <>
             <input
@@ -131,7 +167,7 @@ function SignIn() {
               placeholder="you@email.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && (codeMode ? verifyCode() : send())}
+              onKeyDown={(e) => e.key === "Enter" && primaryAction()}
               style={{
                 width: "100%",
                 boxSizing: "border-box",
@@ -146,7 +182,7 @@ function SignIn() {
                 marginBottom: 10,
               }}
             />
-            {codeMode && (
+            {codeMode && codeSent && (
               <input
                 type="text"
                 inputMode="numeric"
@@ -172,7 +208,7 @@ function SignIn() {
               />
             )}
             <button
-              onClick={codeMode ? verifyCode : send}
+              onClick={primaryAction}
               disabled={state === "sending"}
               style={{
                 width: "100%",
@@ -188,7 +224,15 @@ function SignIn() {
                 opacity: state === "sending" ? 0.6 : 1,
               }}
             >
-              {state === "sending" ? (codeMode ? "Verifying…" : "Sending…") : codeMode ? "Sign in with code" : "Send magic link"}
+              {state === "sending"
+                ? verifying
+                  ? "Verifying…"
+                  : "Sending…"
+                : verifying
+                ? "Verify code"
+                : codeMode
+                ? "Send code"
+                : "Send magic link"}
             </button>
             {state === "error" && (
               <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 12.5, color: "#F5B4B4", marginTop: 10 }}>
