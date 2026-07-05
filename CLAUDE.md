@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Racked is a personal workout tracker: a Vite + React SPA backed by Supabase Postgres, deployed to GitHub Pages. No test suite, no linter configured — verify changes by running the app (`npm run dev`) and exercising the flow in-browser.
+Racked is a personal workout tracker: a Vite + React SPA backed by Supabase Postgres, deployed to GitHub Pages. Vitest covers the pure-logic core (`progression`, `syncQueue`, `planUtils`, `recap`); there are no component/E2E tests and no linter, so UI changes are still verified by running the app (`npm run dev`) and exercising the flow in-browser.
 
 ## Commands
 
@@ -13,7 +13,11 @@ npm install       # install deps
 npm run dev       # vite dev server
 npm run build     # production build (outputs dist/)
 npm run preview   # preview the production build
+npm test          # vitest, single run (also the CI gate on PRs)
+npm run test:watch # vitest watch mode
 ```
+
+Tests live beside the code as `src/*.test.js` and run in a pinned non-UTC timezone (`TZ=America/New_York`, set in the npm scripts) so UTC-drift date bugs can't pass unnoticed. `syncQueue.test.js` opts into jsdom via a `@vitest-environment` docblock and polyfills `localStorage` in-file (Node 26's stub isn't functional and vitest's jsdom env doesn't override it). `.github/workflows/ci.yml` runs the suite on every PR and push to `main`.
 
 Local setup requires a `.env` with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (copy `.env.example`); `src/supabaseClient.js` throws if they're missing. Full table-creation SQL for a fresh Supabase project is in `README.md`.
 
@@ -58,7 +62,7 @@ Deploys automatically via `.github/workflows/deploy.yml` on every push to `main`
 
 ## Working conventions
 
-- No test suite or linter exists — after a change, actually run it (`npm run dev`) rather than relying on a type check.
+- Run `npm test` after touching the pure-logic modules; keep their tests current (the recap snapshot pins the paste-block format on purpose — update it only when the format change is intended). For UI changes there are no component tests — actually run the app (`npm run dev`) rather than relying on a type check.
 - Everything reads/writes through `src/storage.js`; don't call the Supabase client directly from components.
 - Any schema change needs a corresponding SQL migration documented in `README.md` (which doubles as the setup guide for a fresh Supabase project) — follow the existing pattern of ordered, copy-pasteable `alter table`/backfill blocks with a note on fail-soft behavior during rollout.
 - When changing the `plan` jsonb shape, keep old rows loadable (fallbacks at read sites) rather than requiring a hard migration — this is the established pattern for `meta` and was used again for the Phase 5 per-user migration.
