@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Racked is a personal workout tracker: a Vite + React SPA backed by Supabase Postgres, deployed to GitHub Pages. Vitest covers the pure-logic core (`progression`, `syncQueue`, `planUtils`, `recap`, `insights`, `dataExport`); there are no component/E2E tests and no linter, so UI changes are still verified by running the app (`npm run dev`) and exercising the flow in-browser.
+Racked is a personal workout tracker: a Vite + React SPA backed by Supabase Postgres, deployed to GitHub Pages. Vitest covers the pure-logic core (`progression`, `syncQueue`, `planUtils`, `recap`, `insights`, `dataExport`) plus render tests (`@testing-library/react`) over the extracted view components (`ExerciseCard`, `FinisherCard`, `RestTimer`, `SessionSummary`, `PRToast`, `DayTabs`, `useHashRoute`); there are no E2E tests and no linter, so flow-level UI changes are still verified by running the app (`npm run dev`) and exercising the flow in-browser (see `.claude/skills/verify/SKILL.md` for a headless recipe).
 
 ## Commands
 
@@ -17,7 +17,7 @@ npm test          # vitest, single run (also the CI gate on PRs)
 npm run test:watch # vitest watch mode
 ```
 
-Tests live beside the code as `src/*.test.js` and run in a pinned non-UTC timezone (`TZ=America/New_York`, set in the npm scripts) so UTC-drift date bugs can't pass unnoticed. `syncQueue.test.js` opts into jsdom via a `@vitest-environment` docblock and polyfills `localStorage` in-file (Node 26's stub isn't functional and vitest's jsdom env doesn't override it). `.github/workflows/ci.yml` runs the suite on every PR and push to `main`.
+Tests live beside the code as `src/*.test.js(x)` and run in a pinned non-UTC timezone (`TZ=America/New_York`, set in the npm scripts) so UTC-drift date bugs can't pass unnoticed. The default vitest environment is node; browser-global and component tests opt into jsdom via a per-file `@vitest-environment` docblock (`syncQueue.test.js` additionally polyfills `localStorage` in-file — Node 26's stub isn't functional and vitest's jsdom env doesn't override it). Vitest globals are off, so component tests import from `vitest` explicitly and call RTL's `cleanup()` in `afterEach` themselves; never import `RackedTracker`/`AppState`/`storage`/`supabaseClient` in tests (`supabaseClient` throws without env vars). `.github/workflows/ci.yml` runs the suite on every PR and push to `main`.
 
 Local setup requires a `.env` with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (copy `.env.example`); `src/supabaseClient.js` throws if they're missing. Full table-creation SQL for a fresh Supabase project is in `README.md`.
 
@@ -25,7 +25,9 @@ Deploys automatically via `.github/workflows/deploy.yml` on every push to `main`
 
 ## Architecture
 
-**Frontend:** plain inline styles (no CSS/Tailwind), `lucide-react` for icons, installable PWA (`vite-plugin-pwa`: manifest + service worker precache + Google Fonts runtime cache). No component library, no client-side router — view switching is state-driven inside `RackedTracker.jsx`.
+**Frontend:** plain inline styles (no CSS/Tailwind), `lucide-react` for icons, installable PWA (`vite-plugin-pwa`: manifest + service worker precache + Google Fonts runtime cache). No component library and no router dependency — views are hash-routed by `src/useHashRoute.js` (`#/` workout · `#/progress` · `#/plan` editor · `#/onboard` · `#/exercise/<slug>` detail overlay), which keeps them URL-addressable and the back button working in the installed PWA without server rewrites under the `/racked/` base. `#/onboard` bounces non-blank accounts back to `#/` unless the plan editor explicitly entered "replace" mode, because new-mode Skip saves the seed over the current plan.
+
+**Shared state:** `src/AppState.jsx` (context) owns `logs`/`weighIns`/`days`/`planMeta`, the initial load, the offline-queue wiring, and the optimistic-update-with-rollback writes; `RackedTracker.jsx` is the composition + workout-session state root (active day, rest timer, swaps, PR toast) and `ProgressView` reads data straight from the context. View components stay prop-driven.
 
 **Auth:** `src/AuthGate.jsx` wraps the app (in `main.jsx`) and gates everything behind Supabase magic-link email sign-in, with a one-time-code fallback (`verifyOtp`) since magic-link redirects only work against an allowlisted URL, which is brittle in dev — and, on iOS, tapping the link from Mail always opens Safari rather than the installed home-screen app (no deep-link mechanism into a standalone PWA), so `AuthGate.jsx` detects standalone mode (`navigator.standalone` / `display-mode: standalone`) and defaults straight to the code flow there.
 
@@ -52,7 +54,9 @@ Deploys automatically via `.github/workflows/deploy.yml` on every push to `main`
 
 ## Key files
 
-- `src/RackedTracker.jsx` — the workout flow: day tabs, exercise cards (effort chips, swap picker, sparklines), finisher card, rest timer, session summary, PR toast, top-level state/view switching. A "complete" workout requires lift sets **and** the finisher.
+- `src/RackedTracker.jsx` — composition + state root for the workout flow: wires the hash route to views, owns session state (active day, rest timer, swaps, PR toast), and computes day-completion. A "complete" workout requires lift sets **and** the finisher.
+- `src/ExerciseCard.jsx` / `src/FinisherCard.jsx` / `src/RestTimer.jsx` / `src/SessionSummary.jsx` (also exports `sessionStats`) / `src/PRToast.jsx` / `src/DayTabs.jsx` — the extracted, prop-driven workout-view components, each with a render test beside it.
+- `src/AppState.jsx` — the shared data context (see Architecture); `src/useHashRoute.js` — the hash router.
 - `src/planUtils.js` — shared helpers: `SEED_DAYS`, `slug`, `exMetric`, `dayForDate`, `finisherSlug`, category/plate colors.
 - `src/PlanEditor.jsx` — in-app plan editor (writes to `plan`); add/remove/rename days (max 5); entry point into `Onboarding.jsx`'s "design a new plan" flow.
 - `src/recap.js` — `buildWeeklyRecap({days, meta, logs, weighIns, today})`, consumed by `RecapSection.jsx`.
@@ -62,7 +66,7 @@ Deploys automatically via `.github/workflows/deploy.yml` on every push to `main`
 
 ## Working conventions
 
-- Run `npm test` after touching the pure-logic modules; keep their tests current (the recap snapshot pins the paste-block format on purpose — update it only when the format change is intended). For UI changes there are no component tests — actually run the app (`npm run dev`) rather than relying on a type check.
+- Run `npm test` after touching the pure-logic modules or the extracted view components; keep their tests current (the recap snapshot pins the paste-block format on purpose — update it only when the format change is intended). Component render tests cover the extracted pieces only — for flow-level UI changes, actually run the app (`npm run dev`) rather than relying on a type check.
 - Everything reads/writes through `src/storage.js`; don't call the Supabase client directly from components.
 - Any schema change needs a corresponding SQL migration documented in `README.md` (which doubles as the setup guide for a fresh Supabase project) — follow the existing pattern of ordered, copy-pasteable `alter table`/backfill blocks with a note on fail-soft behavior during rollout.
 - When changing the `plan` jsonb shape, keep old rows loadable (fallbacks at read sites) rather than requiring a hard migration — this is the established pattern for `meta` and was used again for the Phase 5 per-user migration.
