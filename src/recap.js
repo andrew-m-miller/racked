@@ -53,7 +53,7 @@ function exerciseIndex(days) {
 
 // "45 lb × 12/12/11" when all sets share a weight, otherwise "45×12, 50×10".
 // Timed holds read "40/35/30 sec"; bodyweight reps read "15/14/12 reps".
-function fmtSets(ex, entries) {
+export function fmtSets(ex, entries) {
   if (isTimeBased(ex)) return `${entries.map((e) => e.weight || "?").join("/")} sec`;
   if (isBodyweightEx(ex)) return `${entries.map((e) => e.reps || "?").join("/")} reps`;
   const weights = [...new Set(entries.map((e) => e.weight))];
@@ -74,6 +74,45 @@ function weekVolume(logs, index, from, to) {
     }
   }
   return Math.round(volume);
+}
+
+// Structured version of the recap's headline numbers, for rendering in-app
+// (the insight strip) rather than as paste-for-Claude text. Shares
+// exerciseIndex/weekVolume with buildWeeklyRecap so there's one source of
+// truth for what counts as a session and as lifting volume.
+export function buildWeeklyInsights({ days, logs, today }) {
+  const start = weekStart(today);
+  const prevStart = shiftDays(start, -7);
+  const prevEnd = shiftDays(start, -1);
+  const index = exerciseIndex(days);
+  const inWeek = (e) => e.date >= start && e.date <= today;
+
+  const dates = new Set();
+  for (const entries of Object.values(logs)) for (const e of entries) if (inWeek(e)) dates.add(e.date);
+  const sessionDates = [...dates].sort();
+  const trainedDayIds = new Set(sessionDates.map((date) => dayForDate(days, logs, date)).filter(Boolean));
+  const missedDays = days.filter((d) => !trainedDayIds.has(d.id)).map((d) => d.name);
+
+  // Stall flags: any lift whose next-session suggestion is a deload (or is
+  // heading for one). Scans full history, not just this week — a stall from
+  // last session still deserves the callout.
+  const stalls = [];
+  for (const [key, entries] of Object.entries(logs)) {
+    if (key.startsWith("finisher-")) continue;
+    const def = index[key]?.ex;
+    if (!def || entries.length === 0) continue;
+    const suggestion = computeSuggestion(def, entries);
+    if (suggestion.trend === "down") stalls.push({ name: def.name, detail: suggestion.detail });
+  }
+
+  return {
+    sessionsDone: sessionDates.length,
+    sessionsPlanned: days.length,
+    missedDays,
+    volume: weekVolume(logs, index, start, today),
+    prevVolume: weekVolume(logs, index, prevStart, prevEnd),
+    stalls,
+  };
 }
 
 export function buildWeeklyRecap({ days, logs, weighIns, today, meta }) {

@@ -4,7 +4,9 @@ import { loadLogs, addLogEntry, clearAllLogs, loadWeighIns, addWeighIn, loadPlan
 import { supabase } from "./supabaseClient.js";
 import { SEED_DAYS, SEED_META, CAT_COLOR, slug, isTimeBased, isBodyweightEx, exMetric, metricUnit, dayForDate, finisherSlug, localDateKey } from "./planUtils.js";
 import { computeSuggestion, targetNumber } from "./progression.js";
-import { Sparkline, ExerciseChartModal } from "./charts.jsx";
+import { Sparkline } from "./charts.jsx";
+import ExerciseDetail from "./ExerciseDetail.jsx";
+import InsightStrip from "./InsightStrip.jsx";
 import ProgressView from "./ProgressView.jsx";
 import PlanEditor from "./PlanEditor.jsx";
 import Onboarding from "./Onboarding.jsx";
@@ -523,7 +525,7 @@ export default function RackedTracker({ session }) {
   const [planMeta, setPlanMeta] = useState(SEED_META); // goal/daysPerWeek/description for the live plan
   const [swaps, setSwaps] = useState({}); // session-scoped substitutions: { primarySlug: altName }
   const [weighIns, setWeighIns] = useState([]); // [{date, weight}]
-  const [chartEx, setChartEx] = useState(null); // exercise shown in the chart modal
+  const [chartEx, setChartEx] = useState(null); // exercise open in the detail view
   const [prToast, setPrToast] = useState(null);
   const [pendingSync, setPendingSync] = useState(0); // offline writes waiting to upload
   const sessionStartRef = useRef(null); // first set logged in this app session
@@ -909,6 +911,9 @@ export default function RackedTracker({ session }) {
 
         {view === "workout" && (
         <>
+        {/* Weekly insight strip — hidden for a brand-new log */}
+        {Object.keys(logs).length > 0 && <InsightStrip days={days} logs={logs} today={today} />}
+
         {/* Day selector */}
         <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
           {days.map((d) => {
@@ -1142,7 +1147,7 @@ export default function RackedTracker({ session }) {
       )}
 
       {chartEx && (
-        <ExerciseChartModal ex={chartEx} history={logs[slug(chartEx.name)] || []} onClose={() => setChartEx(null)} />
+        <ExerciseDetail ex={chartEx} history={logs[slug(chartEx.name)] || []} onClose={() => setChartEx(null)} />
       )}
     </div>
   );
