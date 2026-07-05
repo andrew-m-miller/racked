@@ -15,6 +15,17 @@ export function slug(name) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
 
+// Today's date as a local YYYY-MM-DD key. Uses the device's local calendar
+// rather than UTC (toISOString) so an evening workout in a timezone behind UTC
+// lands on the right day — every stored log date is parsed as local midnight,
+// so `today` must be local too or sessions drift a day forward.
+export function localDateKey(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 // Holds (Plank, Side Plank) log seconds in the `weight` field and reps in
 // the `reps` field; other bodyweight moves (e.g. Hanging Knee Raise) just log reps.
 export function isTimeBased(ex) {

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { PlayCircle, Check, Flame, Dumbbell, TrendingUp, TrendingDown, Minus, RotateCcw, Timer, Trophy, BarChart3, Pencil, Repeat, CloudOff, LogOut } from "lucide-react";
 import { loadLogs, addLogEntry, clearAllLogs, loadWeighIns, addWeighIn, loadPlan, savePlan, flushPending, onPendingChange } from "./storage.js";
 import { supabase } from "./supabaseClient.js";
-import { SEED_DAYS, SEED_META, CAT_COLOR, slug, isTimeBased, isBodyweightEx, exMetric, metricUnit, dayForDate, finisherSlug } from "./planUtils.js";
+import { SEED_DAYS, SEED_META, CAT_COLOR, slug, isTimeBased, isBodyweightEx, exMetric, metricUnit, dayForDate, finisherSlug, localDateKey } from "./planUtils.js";
 import { computeSuggestion, targetNumber } from "./progression.js";
 import { Sparkline, ExerciseChartModal } from "./charts.jsx";
 import ProgressView from "./ProgressView.jsx";
@@ -555,7 +555,7 @@ export default function RackedTracker({ session }) {
           setWeighIns(weighData);
           setDays(liveDays);
           setPlanMeta(planData?.meta ?? SEED_META);
-          setActiveDay(pickInitialDay(liveDays, logData, new Date().toISOString().slice(0, 10)));
+          setActiveDay(pickInitialDay(liveDays, logData, localDateKey()));
           const isNewUser = planData === null && Object.keys(logData).length === 0;
           if (isNewUser) {
             setOnboardMode("new");
@@ -576,7 +576,7 @@ export default function RackedTracker({ session }) {
   }, []);
 
   const day = days.find((d) => d.id === activeDay) || days[0];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateKey();
 
   // Session-scoped substitution: a swapped exercise takes the slot but keeps
   // its own slug, history, and progression.
@@ -599,11 +599,11 @@ export default function RackedTracker({ session }) {
   const handleLog = (ex, weight, reps, effort) => {
     const key = slug(ex.name);
     const history = logs[key] || [];
-    const previousLogs = logs;
     const entry = { date: today, weight, reps, effort: effort ?? null };
-    const nextLogs = { ...logs, [key]: [...history, entry] };
-    // Update optimistically so the UI feels instant; roll back if the insert fails.
-    setLogs(nextLogs);
+    // Update optimistically so the UI feels instant; a functional updater keeps
+    // concurrent writes from clobbering each other, and rollback drops just this
+    // entry (by reference) so an in-flight sibling write survives a failure here.
+    setLogs((prev) => ({ ...prev, [key]: [...(prev[key] || []), entry] }));
     if (!sessionStartRef.current) sessionStartRef.current = Date.now();
 
     // PR celebration: only against history from before today, so the first
@@ -618,29 +618,31 @@ export default function RackedTracker({ session }) {
       prToastTimerRef.current = setTimeout(() => setPrToast(null), 4000);
     }
     // Rest between sets — but not after the last lifting set, where the
-    // finisher (and then the session summary) takes over.
-    const liftsDoneNow = activeExercises.every(
-      (e) => (nextLogs[slug(e.name)] || []).filter((h) => h.date === today).length >= e.sets
-    );
+    // finisher (and then the session summary) takes over. Only this exercise's
+    // count changed, so evaluate it against the just-added entry.
+    const nextForKey = [...history, entry];
+    const liftsDoneNow = activeExercises.every((e) => {
+      const h = slug(e.name) === key ? nextForKey : logs[slug(e.name)] || [];
+      return h.filter((x) => x.date === today).length >= e.sets;
+    });
     setRestEndsAt(liftsDoneNow ? null : Date.now() + REST_SECONDS * 1000);
     addLogEntry(key, today, weight, reps, effort ?? null)
       .then(() => setSaveError(false))
       .catch(() => {
-        setLogs(previousLogs);
+        setLogs((prev) => ({ ...prev, [key]: (prev[key] || []).filter((x) => x !== entry) }));
         setSaveError(true);
       });
   };
 
   const handleLogFinisher = (minutes, mode) => {
     const key = finisherSlug(day.id);
-    const previousLogs = logs;
     const entry = { date: today, weight: "", reps: String(minutes), effort: null, note: mode || null };
-    setLogs({ ...logs, [key]: [...(logs[key] || []), entry] });
+    setLogs((prev) => ({ ...prev, [key]: [...(prev[key] || []), entry] }));
     if (!sessionStartRef.current) sessionStartRef.current = Date.now();
     addLogEntry(key, today, "", String(minutes), null, mode || null)
       .then(() => setSaveError(false))
       .catch(() => {
-        setLogs(previousLogs);
+        setLogs((prev) => ({ ...prev, [key]: (prev[key] || []).filter((x) => x !== entry) }));
         setSaveError(true);
       });
   };
@@ -680,13 +682,12 @@ export default function RackedTracker({ session }) {
   };
 
   const handleWeighIn = (weightLb) => {
-    const previous = weighIns;
-    const next = [...weighIns, { date: today, weight: String(weightLb) }].sort((a, b) => (a.date < b.date ? -1 : 1));
-    setWeighIns(next);
+    const entry = { date: today, weight: String(weightLb) };
+    setWeighIns((prev) => [...prev, entry].sort((a, b) => (a.date < b.date ? -1 : 1)));
     addWeighIn(today, weightLb)
       .then(() => setSaveError(false))
       .catch(() => {
-        setWeighIns(previous);
+        setWeighIns((prev) => prev.filter((x) => x !== entry));
         setSaveError(true);
       });
   };

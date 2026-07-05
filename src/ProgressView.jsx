@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Scale, Flame, ChevronLeft, ChevronRight } from "lucide-react";
 import { dayForDate } from "./planUtils.js";
 import { LineChart } from "./charts.jsx";
@@ -211,15 +211,19 @@ function CalendarSection({ days, logs, today, meta }) {
   const [offset, setOffset] = useState(0); // months back from current
   const plate = Object.fromEntries(days.map((d) => [d.id, d.plate]));
 
-  // Map each training date to the plan day that was performed.
-  const dates = new Set();
-  for (const entries of Object.values(logs)) for (const e of entries) dates.add(e.date);
-  const dayByDate = {};
-  for (const d of dates) dayByDate[d] = dayForDate(days, logs, d);
+  // Map each training date to the plan day that was performed. dayForDate is a
+  // full plan×logs scan, so memoize it — month navigation (offset) must not
+  // trigger a recompute.
+  const { dayByDate, sessions, streaks } = useMemo(() => {
+    const dates = new Set();
+    for (const entries of Object.values(logs)) for (const e of entries) dates.add(e.date);
+    const byDate = {};
+    for (const d of dates) byDate[d] = dayForDate(days, logs, d);
+    const target = meta?.daysPerWeek ?? days.length;
+    return { dayByDate: byDate, sessions: [...dates], streaks: computeStreaks([...dates], today, target) };
+  }, [days, logs, today, meta]);
 
-  const sessions = [...dates];
   const target = meta?.daysPerWeek ?? days.length;
-  const streaks = computeStreaks(sessions, today, target);
 
   const base = toDate(today);
   const month = new Date(base.getFullYear(), base.getMonth() - offset, 1);

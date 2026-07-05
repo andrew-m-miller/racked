@@ -114,9 +114,13 @@ export async function addLogEntry(exerciseSlug, date, weight, reps, effort = nul
 }
 
 export async function clearAllLogs() {
+  // Defense in depth: RLS already scopes deletes to the signed-in user, but an
+  // explicit user_id filter keeps a misconfigured policy from wiping other rows.
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not signed in");
   discardOps((op) => op.table === "logs");
   saveSnapshot("logs", {});
-  const { error } = await supabase.from("logs").delete().not("id", "is", null);
+  const { error } = await supabase.from("logs").delete().eq("user_id", session.user.id);
   if (error) throw error;
 }
 
