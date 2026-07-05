@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildWeeklyRecap } from "./recap.js";
+import { buildWeeklyRecap, buildWeeklyInsights } from "./recap.js";
 
 // Fixed "today" used across tests: Saturday 2026-07-04, so the recap week
 // runs Mon 2026-06-29 through Sat 2026-07-04 (weeks start Monday), and the
@@ -183,5 +183,84 @@ describe("buildWeeklyRecap edge cases", () => {
     const days = volumeDays();
     const recap = buildWeeklyRecap({ days, logs: {}, weighIns: [], today: TODAY, meta: undefined });
     expect(recap).toMatch("Program: 1-day plan");
+  });
+});
+
+describe("buildWeeklyInsights", () => {
+  function twoDays() {
+    return [
+      {
+        id: "A",
+        name: "Upper Day",
+        exercises: [{ name: "Bench Press", cat: "Upper", sets: 3, reps: "8-10", start: "95 lb barbell" }],
+      },
+      {
+        id: "B",
+        name: "Lower Day",
+        exercises: [{ name: "Goblet Squat", cat: "Lower", sets: 3, reps: "10-12", start: "30 lb DB" }],
+      },
+    ];
+  }
+
+  it("counts sessionsDone/sessionsPlanned and flags untrained days as missed", () => {
+    const days = twoDays();
+    const logs = {
+      "bench-press": [{ date: "2026-06-30", weight: "95", reps: "10", effort: 0 }],
+    };
+    const insights = buildWeeklyInsights({ days, logs, today: TODAY });
+    expect(insights.sessionsDone).toBe(1);
+    expect(insights.sessionsPlanned).toBe(2);
+    expect(insights.missedDays).toEqual(["Lower Day"]);
+  });
+
+  it("reports no missed days once every plan day has a trained date this week", () => {
+    const days = twoDays();
+    const logs = {
+      "bench-press": [{ date: "2026-06-30", weight: "95", reps: "10", effort: 0 }],
+      "goblet-squat": [{ date: "2026-07-01", weight: "30", reps: "12", effort: 0 }],
+    };
+    const insights = buildWeeklyInsights({ days, logs, today: TODAY });
+    expect(insights.sessionsDone).toBe(2);
+    expect(insights.missedDays).toEqual([]);
+  });
+
+  it("counts only weighted lifts in the current week's volume, carries prevVolume from last week, and excludes finishers/orphaned slugs", () => {
+    const days = volumeDays(); // Bench Press (weighted) + Plank (timed/bodyweight)
+    const logs = {
+      "bench-press": [
+        { date: "2026-06-23", weight: "90", reps: "8", effort: 0 }, // previous week: 720
+        { date: "2026-06-30", weight: "95", reps: "10", effort: 0 }, // current week: 950
+      ],
+      plank: [{ date: "2026-06-30", weight: "40", reps: "1" }], // timed hold — excluded
+      "finisher-a": [{ date: "2026-06-30", reps: "20", note: "Bike" }], // finisher — excluded
+      "old-cable-fly": [{ date: "2026-06-30", weight: "50", reps: "12" }], // orphaned slug — excluded
+    };
+    const insights = buildWeeklyInsights({ days, logs, today: TODAY });
+    expect(insights.volume).toBe(950);
+    expect(insights.prevVolume).toBe(720);
+  });
+
+  it("flags a lift with 2 consecutive under-target sessions as a stall, and leaves a healthy lift out", () => {
+    const days = [
+      {
+        id: "A",
+        name: "Upper Day",
+        exercises: [
+          { name: "Bench Press", cat: "Upper", sets: 3, reps: "8-12", start: "30 lb DB" },
+          { name: "Squat", cat: "Lower", sets: 3, reps: "8-12", start: "45 lb DB" },
+        ],
+      },
+    ];
+    const logs = {
+      "bench-press": [
+        { date: "2026-06-20", weight: "30", reps: "8", effort: null }, // miss
+        { date: "2026-06-27", weight: "30", reps: "9", effort: null }, // miss — 2 in a row, trend "down"
+      ],
+      squat: [{ date: "2026-06-27", weight: "45", reps: "12", effort: null }], // hits target, trend "up"
+    };
+    const insights = buildWeeklyInsights({ days, logs, today: TODAY });
+    const stallNames = insights.stalls.map((s) => s.name);
+    expect(stallNames).toContain("Bench Press");
+    expect(stallNames).not.toContain("Squat");
   });
 });

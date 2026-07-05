@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Racked is a personal workout tracker: a Vite + React SPA backed by Supabase Postgres, deployed to GitHub Pages. Vitest covers the pure-logic core (`progression`, `syncQueue`, `planUtils`, `recap`); there are no component/E2E tests and no linter, so UI changes are still verified by running the app (`npm run dev`) and exercising the flow in-browser.
+Racked is a personal workout tracker: a Vite + React SPA backed by Supabase Postgres, deployed to GitHub Pages. Vitest covers the pure-logic core (`progression`, `syncQueue`, `planUtils`, `recap`, `insights`, `dataExport`); there are no component/E2E tests and no linter, so UI changes are still verified by running the app (`npm run dev`) and exercising the flow in-browser.
 
 ## Commands
 

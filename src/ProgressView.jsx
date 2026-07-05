@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from "react";
-import { Scale, Flame, ChevronLeft, ChevronRight } from "lucide-react";
+import { Scale, Flame, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { dayForDate } from "./planUtils.js";
 import { LineChart } from "./charts.jsx";
 import RecapSection from "./RecapSection.jsx";
+import { logsToCSV, weighInsToCSV, buildExportJSON } from "./dataExport.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -330,12 +331,83 @@ function CalendarSection({ days, logs, today, meta }) {
   );
 }
 
+function downloadFile(filename, text, type) {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// One-tap backup of logs + weigh-ins + plan. All from the same in-memory
+// state the views render (loaded through src/storage.js) — no extra fetch.
+function ExportSection({ days, logs, weighIns, today, meta }) {
+  const buttonStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    background: "#1B1E22",
+    border: "1px solid #2A2E33",
+    borderRadius: 8,
+    color: "#9AA1AC",
+    cursor: "pointer",
+    padding: "8px 12px",
+    fontFamily: "'Inter', sans-serif",
+    fontSize: 12.5,
+    fontWeight: 500,
+  };
+
+  return (
+    <div>
+      <SectionTitle icon={<Download size={15} color="#22C55E" />}>Your data</SectionTitle>
+      <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11.5, color: "#6B7280", marginBottom: 10 }}>
+        Everything you've logged, yours to keep — JSON for a full backup, CSV for a spreadsheet.
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          style={buttonStyle}
+          onClick={() =>
+            downloadFile(
+              `racked-backup-${today}.json`,
+              buildExportJSON({ logs, weighIns, plan: { meta, days }, exportedAt: new Date().toISOString() }),
+              "application/json"
+            )
+          }
+        >
+          <Download size={13} />
+          JSON backup
+        </button>
+        <button
+          type="button"
+          style={buttonStyle}
+          onClick={() => downloadFile(`racked-logs-${today}.csv`, logsToCSV(logs), "text/csv")}
+        >
+          <Download size={13} />
+          Logs CSV
+        </button>
+        <button
+          type="button"
+          style={buttonStyle}
+          onClick={() => downloadFile(`racked-weigh-ins-${today}.csv`, weighInsToCSV(weighIns), "text/csv")}
+        >
+          <Download size={13} />
+          Weigh-ins CSV
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ProgressView({ days, logs, weighIns, today, meta, onAddWeighIn, onApplyPlanChange }) {
   return (
     <div>
       <BodyweightSection weighIns={weighIns} today={today} onAddWeighIn={onAddWeighIn} />
       <CalendarSection days={days} logs={logs} today={today} meta={meta} />
       <RecapSection days={days} logs={logs} weighIns={weighIns} today={today} meta={meta} onApplyPlanChange={onApplyPlanChange} />
+      <ExportSection days={days} logs={logs} weighIns={weighIns} today={today} meta={meta} />
     </div>
   );
 }
