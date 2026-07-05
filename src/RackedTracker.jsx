@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useRef } from "react";
-import { PlayCircle, Check, Flame, Dumbbell, TrendingUp, TrendingDown, Minus, RotateCcw, Timer, Trophy, BarChart3, Pencil, Repeat, CloudOff, LogOut } from "lucide-react";
-import { loadLogs, addLogEntry, clearAllLogs, loadWeighIns, addWeighIn, loadPlan, savePlan, flushPending, onPendingChange } from "./storage.js";
+import { Dumbbell, RotateCcw, BarChart3, Pencil, CloudOff, LogOut } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
-import { SEED_DAYS, SEED_META, CAT_COLOR, slug, isTimeBased, isBodyweightEx, exMetric, metricUnit, dayForDate, finisherSlug, localDateKey } from "./planUtils.js";
-import { computeSuggestion, targetNumber } from "./progression.js";
-import { Sparkline } from "./charts.jsx";
+import { SEED_DAYS, SEED_META, slug, exMetric, metricUnit, dayForDate, finisherSlug, localDateKey } from "./planUtils.js";
+import { useAppState } from "./AppState.jsx";
+import { useHashRoute } from "./useHashRoute.js";
+import DayTabs from "./DayTabs.jsx";
+import ExerciseCard from "./ExerciseCard.jsx";
+import FinisherCard from "./FinisherCard.jsx";
+import RestTimer from "./RestTimer.jsx";
+import SessionSummary, { sessionStats } from "./SessionSummary.jsx";
+import PRToast from "./PRToast.jsx";
 import ExerciseDetail from "./ExerciseDetail.jsx";
 import InsightStrip from "./InsightStrip.jsx";
 import ProgressView from "./ProgressView.jsx";
@@ -34,548 +39,47 @@ function pickInitialDay(days, logs, today) {
   return order[(order.indexOf(lastDay) + 1) % order.length];
 }
 
-function sessionStats(exercises, logs, today) {
-  let volume = 0;
-  const levelUps = [];
-  for (const ex of exercises) {
-    const hist = logs[slug(ex.name)] || [];
-    const todayEntries = hist.filter((h) => h.date === today);
-    const prior = hist.filter((h) => h.date < today);
-    if (!isTimeBased(ex) && !isBodyweightEx(ex)) {
-      for (const e of todayEntries) volume += (parseFloat(e.weight) || 0) * (parseFloat(e.reps) || 0);
-    }
-    const bestToday = todayEntries.reduce((m, e) => Math.max(m, exMetric(ex, e)), 0);
-    const bestPrior = prior.reduce((m, e) => Math.max(m, exMetric(ex, e)), 0);
-    if (prior.length > 0 && bestToday > bestPrior) levelUps.push(ex.name);
-  }
-  return { volume: Math.round(volume), levelUps };
-}
-
-function TrendIcon({ trend }) {
-  if (trend === "up") return <TrendingUp size={13} color="#22C55E" />;
-  if (trend === "down") return <TrendingDown size={13} color="#EF4444" />;
-  return <Minus size={13} color="#6B7280" />;
-}
-
-function RestTimer({ endsAt, onExtend, onSkip }) {
-  const [now, setNow] = useState(Date.now());
-  const firedRef = useRef(false);
-
-  useEffect(() => {
-    firedRef.current = false;
-    const id = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(id);
-  }, [endsAt]);
-
-  const remaining = Math.max(0, Math.ceil((endsAt - now) / 1000));
-  const done = remaining <= 0;
-
-  useEffect(() => {
-    if (!done || firedRef.current) return;
-    firedRef.current = true;
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-    const id = setTimeout(onSkip, 5000);
-    return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [done]);
-
-  const mm = Math.floor(remaining / 60);
-  const ss = String(remaining % 60).padStart(2, "0");
-  const pillButton = {
-    background: "transparent",
-    border: "1px solid #2A2E33",
-    borderRadius: 6,
-    padding: "5px 10px",
-    color: "#9AA1AC",
-    fontFamily: "'Inter', sans-serif",
-    fontSize: 12,
-    fontWeight: 500,
-    cursor: "pointer",
-  };
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        bottom: 0,
-        left: 0,
-        right: 0,
-        display: "flex",
-        justifyContent: "center",
-        padding: "0 16px calc(16px + env(safe-area-inset-bottom))",
-        pointerEvents: "none",
-        zIndex: 10,
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 440,
-          pointerEvents: "auto",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          background: done ? "#14321C" : "#1B1E22",
-          border: `1px solid ${done ? "#22C55E" : "#2A2E33"}`,
-          borderRadius: 10,
-          padding: "10px 14px",
-          boxShadow: "0 8px 24px rgba(0, 0, 0, 0.5)",
-        }}
-      >
-        <Timer size={16} color={done ? "#22C55E" : "#9AA1AC"} style={{ flexShrink: 0 }} />
-        <span
-          style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 16,
-            fontWeight: 600,
-            color: done ? "#22C55E" : "#F5F6F7",
-            minWidth: 44,
-          }}
-        >
-          {done ? "GO" : `${mm}:${ss}`}
-        </span>
-        <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, color: "#9AA1AC", flex: 1 }}>
-          {done ? "Rest over — next set" : "Resting"}
-        </span>
-        {!done && (
-          <button type="button" onClick={onExtend} style={pillButton}>
-            +30s
-          </button>
-        )}
-        <button type="button" onClick={onSkip} style={pillButton}>
-          {done ? "Dismiss" : "Skip"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-const EFFORTS = [
-  { value: -1, label: "easy", color: "#22C55E" },
-  { value: 0, label: "right", color: "#9AA1AC" },
-  { value: 1, label: "brutal", color: "#EF4444" },
-];
-
-function ExerciseCard({ ex, primary, history, setsDone, onLog, onOpenChart, onSwap }) {
-  const complete = setsDone >= ex.sets;
-  const timeBased = isTimeBased(ex);
-  const showWeightBox = timeBased || !isBodyweightEx(ex);
-  const suggestion = computeSuggestion(ex, history);
-  const suggestedReps = timeBased ? String(ex.sets) : String(targetNumber(ex.reps) ?? "");
-  const [weight, setWeight] = useState(suggestion.value);
-  const [reps, setReps] = useState(suggestedReps);
-  const [effort, setEffort] = useState(null); // optional: -1 easy · 0 right · 1 brutal
-  const [swapOpen, setSwapOpen] = useState(false);
-  const swapped = primary && ex.name !== primary.name;
-
-  // Refill the inputs with the up-to-date recommendation whenever a new
-  // set gets logged, without overwriting an in-progress edit in between.
-  useEffect(() => {
-    setWeight(suggestion.value);
-    setReps(suggestedReps);
-    setEffort(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [history.length]);
-
-  const applySuggestion = () => {
-    setWeight(suggestion.value);
-    setReps(suggestedReps);
-  };
-
-  const submit = () => {
-    if (!reps) return;
-    onLog(weight, reps, effort);
-  };
-
-  return (
-    <div
-      style={{
-        background: "#1B1E22",
-        border: "1px solid #2A2E33",
-        borderRadius: 10,
-        padding: "16px 16px 14px",
-        marginBottom: 10,
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-        <div>
-          <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 15.5, color: "#F5F6F7", lineHeight: 1.25 }}>
-            {ex.name}
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
-            <span
-              style={{
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: 11,
-                color: CAT_COLOR[ex.cat],
-                border: `1px solid ${CAT_COLOR[ex.cat]}55`,
-                borderRadius: 4,
-                padding: "1px 6px",
-              }}
-            >
-              {ex.cat}
-            </span>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, color: "#9AA1AC" }}>
-              {ex.sets} × {ex.reps}
-            </span>
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          {history.length >= 2 && (
-            <button
-              type="button"
-              onClick={onOpenChart}
-              aria-label={`Progress chart for ${ex.name}`}
-              style={{ background: "transparent", border: "none", padding: "2px 0", cursor: "pointer" }}
-            >
-              <Sparkline values={history.map((e) => exMetric(ex, e))} color={CAT_COLOR[ex.cat]} />
-            </button>
-          )}
-          <span
-            style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: 12.5,
-              color: complete ? "#22C55E" : setsDone > 0 ? "#F5F6F7" : "#3A3F45",
-            }}
-          >
-            {Math.min(setsDone, ex.sets)}/{ex.sets}
-          </span>
-          {complete && (
-            <div style={{ background: "#22C55E22", borderRadius: 999, padding: 4 }}>
-              <Check size={14} color="#22C55E" strokeWidth={3} />
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Suggestion strip */}
-      <button
-        type="button"
-        onClick={applySuggestion}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          width: "100%",
-          marginTop: 10,
-          background: "#101214",
-          border: "1px solid #2A2E33",
-          borderRadius: 6,
-          padding: "7px 10px",
-          cursor: "pointer",
-          textAlign: "left",
-        }}
-      >
-        <TrendIcon trend={suggestion.trend} />
-        <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 12.5, color: "#E5E7EB", fontWeight: 500 }}>
-          {suggestion.text}
-        </span>
-        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "#6B7280", marginLeft: "auto" }}>
-          {suggestion.detail}
-        </span>
-      </button>
-
-      <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
-        {showWeightBox && (
-          <input
-            type="text"
-            inputMode={timeBased ? "numeric" : "decimal"}
-            placeholder={timeBased ? "sec" : "lb"}
-            value={weight}
-            onChange={(e) => setWeight(e.target.value)}
-            style={{
-              width: 62,
-              background: "#101214",
-              border: "1px solid #2A2E33",
-              borderRadius: 6,
-              padding: "7px 8px",
-              color: "#F5F6F7",
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: 13,
-              outline: "none",
-            }}
-          />
-        )}
-        <input
-          type="text"
-          inputMode="numeric"
-          placeholder="reps"
-          value={reps}
-          onChange={(e) => setReps(e.target.value)}
-          style={{
-            width: 62,
-            background: "#101214",
-            border: "1px solid #2A2E33",
-            borderRadius: 6,
-            padding: "7px 8px",
-            color: "#F5F6F7",
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 13,
-            outline: "none",
-          }}
-        />
-        <button
-          onClick={submit}
-          style={{
-            flex: 1,
-            background: "#F5F6F7",
-            color: "#101214",
-            border: "none",
-            borderRadius: 6,
-            padding: "8px 10px",
-            fontFamily: "'Inter', sans-serif",
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: "pointer",
-          }}
-        >
-          Log set
-        </button>
-        <button
-          type="button"
-          onClick={() => window.open(ex.url, "_blank", "noopener,noreferrer")}
-          style={{ display: "flex", alignItems: "center", color: "#6B7280", padding: 6, background: "transparent", border: "none", cursor: "pointer" }}
-          aria-label={`Watch tutorial for ${ex.name}`}
-        >
-          <PlayCircle size={20} />
-        </button>
-        {primary && (primary.alts || []).length > 0 && (
-          <button
-            type="button"
-            onClick={() => setSwapOpen(!swapOpen)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              color: swapped ? "#5EC8D8" : "#6B7280",
-              padding: 6,
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-            }}
-            aria-label={`Swap ${primary.name} for an alternate`}
-            title="Machine taken? Swap it"
-          >
-            <Repeat size={17} />
-          </button>
-        )}
-      </div>
-
-      {swapOpen && (
-        <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-          {[primary, ...(primary.alts || [])].map((opt) => {
-            const active = opt.name === ex.name;
-            return (
-              <button
-                key={opt.name}
-                type="button"
-                onClick={() => {
-                  onSwap(opt.name === primary.name ? null : opt.name);
-                  setSwapOpen(false);
-                }}
-                style={{
-                  background: active ? "#5EC8D822" : "#101214",
-                  border: `1px solid ${active ? "#5EC8D8" : "#2A2E33"}`,
-                  borderRadius: 999,
-                  color: active ? "#5EC8D8" : "#9AA1AC",
-                  fontFamily: "'Inter', sans-serif",
-                  fontSize: 11.5,
-                  padding: "5px 10px",
-                  cursor: "pointer",
-                }}
-              >
-                {opt.name}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 9 }}>
-        <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, color: "#6B7280" }}>felt:</span>
-        {EFFORTS.map((e) => {
-          const active = effort === e.value;
-          return (
-            <button
-              key={e.value}
-              type="button"
-              onClick={() => setEffort(active ? null : e.value)}
-              style={{
-                background: active ? `${e.color}22` : "transparent",
-                border: `1px solid ${active ? e.color : "#2A2E33"}`,
-                borderRadius: 999,
-                color: active ? e.color : "#6B7280",
-                fontFamily: "'Inter', sans-serif",
-                fontSize: 11,
-                padding: "3px 10px",
-                cursor: "pointer",
-              }}
-            >
-              {e.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// Cardio finisher: display + a log control (minutes, optional machine/mode).
-// Entries land in `logs` under the day's finisher slug with reps = minutes.
-function FinisherCard({ day, entries, onLog }) {
-  const [minutes, setMinutes] = useState("");
-  const [mode, setMode] = useState("");
-  const done = entries.length > 0;
-  const doneMin = entries.reduce((n, e) => n + (parseFloat(e.reps) || 0), 0);
-
-  const submit = () => {
-    const min = parseFloat(minutes);
-    if (!min || min <= 0) return;
-    onLog(min, mode.trim());
-    setMinutes("");
-    setMode("");
-  };
-
-  const inputStyle = {
-    background: "#101214",
-    border: "1px solid #2A2E33",
-    borderRadius: 6,
-    padding: "7px 8px",
-    color: "#F5F6F7",
-    fontFamily: "'JetBrains Mono', monospace",
-    fontSize: 13,
-    outline: "none",
-  };
-
-  return (
-    <div
-      style={{
-        background: "#1B1E22",
-        border: `1px solid ${done ? "#22C55E55" : "#2A2E33"}`,
-        borderRadius: 10,
-        padding: "12px 14px",
-        marginTop: 4,
-      }}
-    >
-      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <Flame size={17} color="#E8967A" style={{ flexShrink: 0 }} />
-        <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: "#9AA1AC", flex: 1 }}>
-          <strong style={{ color: "#F5F6F7", fontWeight: 600 }}>Finisher — </strong>
-          {day.finisher}
-        </span>
-        {done && (
-          <div style={{ background: "#22C55E22", borderRadius: 999, padding: 4, flexShrink: 0 }}>
-            <Check size={14} color="#22C55E" strokeWidth={3} />
-          </div>
-        )}
-      </div>
-
-      {done ? (
-        <div style={{ marginTop: 8, fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, color: "#22C55E" }}>
-          {doneMin} min done{entries[entries.length - 1].note ? ` · ${entries[entries.length - 1].note}` : ""}
-        </div>
-      ) : (
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <input
-            type="text"
-            inputMode="numeric"
-            placeholder="min"
-            value={minutes}
-            onChange={(e) => setMinutes(e.target.value)}
-            style={{ ...inputStyle, width: 52 }}
-          />
-          <input
-            type="text"
-            placeholder="machine / mode (optional)"
-            value={mode}
-            onChange={(e) => setMode(e.target.value)}
-            style={{ ...inputStyle, flex: 1, minWidth: 0, fontFamily: "'Inter', sans-serif" }}
-          />
-          <button
-            onClick={submit}
-            style={{
-              background: "#F5F6F7",
-              color: "#101214",
-              border: "none",
-              borderRadius: 6,
-              padding: "8px 12px",
-              fontFamily: "'Inter', sans-serif",
-              fontWeight: 600,
-              fontSize: 13,
-              cursor: "pointer",
-              flexShrink: 0,
-            }}
-          >
-            Log
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
+// Composition + state root: data comes from AppState, the visible view from
+// the hash route; what lives here is the workout-session state (active day,
+// rest timer, swaps, PR toast) and the handlers that tie them together.
 export default function RackedTracker({ session }) {
+  const { logs, weighIns, days, planMeta, loaded, isNewUser, saveError, pendingSync, logEntry, logWeighIn, saveLivePlan, clearLogs } =
+    useAppState();
+  const [route, navigate] = useHashRoute();
+  const view = route.view; // "workout" | "progress" | "edit" | "onboard"
+
   const [activeDay, setActiveDay] = useState(SEED_DAYS[0].id);
-  const [logs, setLogs] = useState({}); // { slug: [{date,weight,reps}, ...] }
-  const [loaded, setLoaded] = useState(false);
-  const [saveError, setSaveError] = useState(false);
   const [restEndsAt, setRestEndsAt] = useState(null);
-  const [view, setView] = useState("workout"); // "workout" | "progress" | "edit" | "onboard"
   const [onboardMode, setOnboardMode] = useState("new"); // "new" first-run · "replace" from the plan editor
-  const [days, setDays] = useState(SEED_DAYS); // live plan; Supabase row wins over the bundled seed
-  const [planMeta, setPlanMeta] = useState(SEED_META); // goal/daysPerWeek/description for the live plan
   const [swaps, setSwaps] = useState({}); // session-scoped substitutions: { primarySlug: altName }
-  const [weighIns, setWeighIns] = useState([]); // [{date, weight}]
-  const [chartEx, setChartEx] = useState(null); // exercise open in the detail view
   const [prToast, setPrToast] = useState(null);
-  const [pendingSync, setPendingSync] = useState(0); // offline writes waiting to upload
   const sessionStartRef = useRef(null); // first set logged in this app session
   const prToastTimerRef = useRef(null);
+  const didInitRef = useRef(false);
 
-  // Offline queue: track how many writes are parked, and replay them the
-  // moment the connection comes back.
-  useEffect(() => {
-    const unsubscribe = onPendingChange(setPendingSync);
-    const onOnline = () => flushPending().catch(() => setSaveError(true));
-    window.addEventListener("online", onOnline);
-    return () => {
-      unsubscribe();
-      window.removeEventListener("online", onOnline);
-    };
-  }, []);
+  useEffect(() => () => clearTimeout(prToastTimerRef.current), []);
 
+  // Once the data is in: open on the right day tab, and send a genuinely
+  // blank account into onboarding.
   useEffect(() => {
-    let cancelled = false;
-    // Weigh-ins and the cloud plan degrade gracefully: if their tables don't
-    // exist yet, the rest of the app still works (plan falls back to the seed).
-    // loadPlan maps a failure to undefined so "no row yet" (null) stays
-    // distinguishable — only a genuinely blank account gets onboarding.
-    Promise.all([loadLogs(), loadWeighIns().catch(() => []), loadPlan().catch(() => undefined)])
-      .then(([logData, weighData, planData]) => {
-        if (!cancelled) {
-          const liveDays = planData?.days?.length ? planData.days : SEED_DAYS;
-          setLogs(logData);
-          setWeighIns(weighData);
-          setDays(liveDays);
-          setPlanMeta(planData?.meta ?? SEED_META);
-          setActiveDay(pickInitialDay(liveDays, logData, localDateKey()));
-          const isNewUser = planData === null && Object.keys(logData).length === 0;
-          if (isNewUser) {
-            setOnboardMode("new");
-            setView("onboard");
-          }
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setSaveError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoaded(true);
-      });
-    return () => {
-      cancelled = true;
-      clearTimeout(prToastTimerRef.current);
-    };
-  }, []);
+    if (!loaded || didInitRef.current) return;
+    didInitRef.current = true;
+    setActiveDay(pickInitialDay(days, logs, localDateKey()));
+    if (isNewUser) {
+      setOnboardMode("new");
+      navigate("/onboard");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, days, logs, isNewUser]);
+
+  // Onboarding is reachable by URL, but "new" mode's Skip saves the seed over
+  // whatever plan exists — so only a blank account (or an explicit "replace"
+  // entry from the plan editor) may stay; anyone else bounces to the workout.
+  useEffect(() => {
+    if (!loaded) return;
+    if (view === "onboard" && !isNewUser && onboardMode !== "replace") navigate("/");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, view, isNewUser, onboardMode]);
 
   const day = days.find((d) => d.id === activeDay) || days[0];
   const today = localDateKey();
@@ -590,6 +94,25 @@ export default function RackedTracker({ session }) {
   };
   const activeExercises = day.exercises.map(effectiveExercise);
 
+  // Resolve #/exercise/<slug> to a live exercise definition. The active swap
+  // is checked first; primaries and alternates still resolve afterwards so a
+  // deep link survives a reload (swaps are session-scoped and reset).
+  const detailEx = (() => {
+    if (!route.exerciseSlug) return null;
+    for (const d of days) {
+      for (const base of d.exercises) {
+        const candidates = [
+          effectiveExercise(base),
+          base,
+          ...(base.alts || []).map((alt) => ({ ...base, name: alt.name, start: alt.start, url: alt.url })),
+        ];
+        const hit = candidates.find((c) => slug(c.name) === route.exerciseSlug);
+        if (hit) return hit;
+      }
+    }
+    return null;
+  })();
+
   const handleSwap = (base, altName) => {
     const key = slug(base.name);
     const next = { ...swaps };
@@ -602,10 +125,7 @@ export default function RackedTracker({ session }) {
     const key = slug(ex.name);
     const history = logs[key] || [];
     const entry = { date: today, weight, reps, effort: effort ?? null };
-    // Update optimistically so the UI feels instant; a functional updater keeps
-    // concurrent writes from clobbering each other, and rollback drops just this
-    // entry (by reference) so an in-flight sibling write survives a failure here.
-    setLogs((prev) => ({ ...prev, [key]: [...(prev[key] || []), entry] }));
+    logEntry(key, entry);
     if (!sessionStartRef.current) sessionStartRef.current = Date.now();
 
     // PR celebration: only against history from before today, so the first
@@ -628,40 +148,19 @@ export default function RackedTracker({ session }) {
       return h.filter((x) => x.date === today).length >= e.sets;
     });
     setRestEndsAt(liftsDoneNow ? null : Date.now() + REST_SECONDS * 1000);
-    addLogEntry(key, today, weight, reps, effort ?? null)
-      .then(() => setSaveError(false))
-      .catch(() => {
-        setLogs((prev) => ({ ...prev, [key]: (prev[key] || []).filter((x) => x !== entry) }));
-        setSaveError(true);
-      });
   };
 
   const handleLogFinisher = (minutes, mode) => {
     const key = finisherSlug(day.id);
-    const entry = { date: today, weight: "", reps: String(minutes), effort: null, note: mode || null };
-    setLogs((prev) => ({ ...prev, [key]: [...(prev[key] || []), entry] }));
+    logEntry(key, { date: today, weight: "", reps: String(minutes), effort: null, note: mode || null });
     if (!sessionStartRef.current) sessionStartRef.current = Date.now();
-    addLogEntry(key, today, "", String(minutes), null, mode || null)
-      .then(() => setSaveError(false))
-      .catch(() => {
-        setLogs((prev) => ({ ...prev, [key]: (prev[key] || []).filter((x) => x !== entry) }));
-        setSaveError(true);
-      });
   };
 
   const handleSavePlan = async (nextDays, nextMeta = planMeta) => {
-    try {
-      await savePlan({ meta: nextMeta, days: nextDays });
-      setDays(nextDays);
-      setPlanMeta(nextMeta);
-      setSwaps({});
-      // The edited plan may have dropped the day that was open.
-      if (!nextDays.some((d) => d.id === activeDay)) setActiveDay(nextDays[0]?.id);
-      setSaveError(false);
-    } catch (err) {
-      setSaveError(true);
-      throw err;
-    }
+    await saveLivePlan(nextDays, nextMeta);
+    setSwaps({});
+    // The edited plan may have dropped the day that was open.
+    if (!nextDays.some((d) => d.id === activeDay)) setActiveDay(nextDays[0]?.id);
   };
 
   // Apply a coach-suggested tweak ({exercise, sets, reps}, nulls = unchanged)
@@ -683,29 +182,11 @@ export default function RackedTracker({ session }) {
     return handleSavePlan(nextDays);
   };
 
-  const handleWeighIn = (weightLb) => {
-    const entry = { date: today, weight: String(weightLb) };
-    setWeighIns((prev) => [...prev, entry].sort((a, b) => (a.date < b.date ? -1 : 1)));
-    addWeighIn(today, weightLb)
-      .then(() => setSaveError(false))
-      .catch(() => {
-        setWeighIns((prev) => prev.filter((x) => x !== entry));
-        setSaveError(true);
-      });
-  };
-
   const resetAll = () => {
     if (!window.confirm || window.confirm("Clear all logged history? This can't be undone.")) {
-      const previousLogs = logs;
-      setLogs({});
       setRestEndsAt(null);
       sessionStartRef.current = null;
-      clearAllLogs()
-        .then(() => setSaveError(false))
-        .catch(() => {
-          setLogs(previousLogs);
-          setSaveError(true);
-        });
+      clearLogs();
     }
   };
 
@@ -774,7 +255,7 @@ export default function RackedTracker({ session }) {
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <button
               type="button"
-              onClick={() => setView(view === "workout" ? "progress" : "workout")}
+              onClick={() => navigate(view === "workout" ? "/progress" : "/")}
               title={view === "workout" ? "Progress" : "Back to workout"}
               style={{
                 display: "flex",
@@ -796,7 +277,7 @@ export default function RackedTracker({ session }) {
             </button>
             <button
               type="button"
-              onClick={() => setView(view === "edit" ? "workout" : "edit")}
+              onClick={() => navigate(view === "edit" ? "/" : "/plan")}
               title={view === "edit" ? "Back to workout" : "Edit plan"}
               style={{
                 display: "flex",
@@ -866,27 +347,17 @@ export default function RackedTracker({ session }) {
           </div>
         ) : null}
 
-        {view === "progress" && (
-          <ProgressView
-            days={days}
-            logs={logs}
-            weighIns={weighIns}
-            today={today}
-            meta={planMeta}
-            onAddWeighIn={handleWeighIn}
-            onApplyPlanChange={handleApplyPlanChange}
-          />
-        )}
+        {view === "progress" && <ProgressView onApplyPlanChange={handleApplyPlanChange} />}
 
         {view === "edit" && (
           <PlanEditor
             days={days}
             meta={planMeta}
             onSave={handleSavePlan}
-            onClose={() => setView("workout")}
+            onClose={() => navigate("/")}
             onDesign={() => {
               setOnboardMode("replace");
-              setView("onboard");
+              navigate("/onboard");
             }}
           />
         )}
@@ -897,15 +368,15 @@ export default function RackedTracker({ session }) {
             onAccept={async ({ meta, days: nextDays }) => {
               await handleSavePlan(nextDays, meta);
               setActiveDay(nextDays[0]?.id);
-              setView("workout");
+              navigate("/");
             }}
             onSkip={() => {
               // Save the seed as this user's plan so onboarding is offered once;
               // a failed save just means they see it again next visit.
               handleSavePlan(SEED_DAYS, SEED_META).catch(() => {});
-              setView("workout");
+              navigate("/");
             }}
-            onCancel={() => setView("edit")}
+            onCancel={() => navigate("/plan")}
           />
         )}
 
@@ -915,50 +386,7 @@ export default function RackedTracker({ session }) {
         {Object.keys(logs).length > 0 && <InsightStrip days={days} logs={logs} today={today} />}
 
         {/* Day selector */}
-        <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
-          {days.map((d) => {
-            const active = d.id === activeDay;
-            return (
-              <button
-                key={d.id}
-                onClick={() => setActiveDay(d.id)}
-                style={{
-                  flex: 1,
-                  background: active ? "#1B1E22" : "transparent",
-                  border: `2px solid ${active ? d.plate : "#2A2E33"}`,
-                  borderRadius: 10,
-                  padding: "8px 2px",
-                  cursor: "pointer",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 4,
-                }}
-              >
-                <div
-                  style={{
-                    width: 26,
-                    height: 26,
-                    borderRadius: "50%",
-                    border: `4px solid ${d.plate}`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontFamily: "'JetBrains Mono', monospace",
-                    fontWeight: 600,
-                    fontSize: 11,
-                    color: active ? "#F5F6F7" : "#6B7280",
-                  }}
-                >
-                  {d.id}
-                </div>
-                <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 10, color: active ? "#F5F6F7" : "#6B7280", fontWeight: 500 }}>
-                  {d.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        <DayTabs days={days} activeDay={activeDay} onSelect={setActiveDay} />
 
         {/* Day title + progress */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
@@ -994,52 +422,7 @@ export default function RackedTracker({ session }) {
 
         {/* Session summary — appears once every set of the day is logged */}
         {dayComplete && (
-          <div
-            style={{
-              border: `2px solid ${day.plate}`,
-              background: "#1B1E22",
-              borderRadius: 10,
-              padding: "14px 16px",
-              marginBottom: 18,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Trophy size={16} color={day.plate} />
-              <span
-                style={{
-                  fontFamily: "'Oswald', sans-serif",
-                  fontWeight: 600,
-                  fontSize: 15,
-                  letterSpacing: "0.03em",
-                  textTransform: "uppercase",
-                  color: "#F5F6F7",
-                }}
-              >
-                Workout complete
-              </span>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 16,
-                marginTop: 8,
-                flexWrap: "wrap",
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: 12.5,
-                color: "#9AA1AC",
-              }}
-            >
-              <span>{stats.volume.toLocaleString()} lb lifted</span>
-              {cardioMin > 0 && <span>{cardioMin} min cardio</span>}
-              {durationMin != null && <span>{durationMin} min total</span>}
-              <span>{totalSets} sets</span>
-            </div>
-            {stats.levelUps.length > 0 && (
-              <div style={{ marginTop: 6, fontFamily: "'Inter', sans-serif", fontSize: 12.5, color: "#22C55E" }}>
-                Leveled up: {stats.levelUps.join(", ")}
-              </div>
-            )}
-          </div>
+          <SessionSummary day={day} stats={stats} cardioMin={cardioMin} durationMin={durationMin} totalSets={totalSets} />
         )}
 
         {/* Exercise list */}
@@ -1055,7 +438,7 @@ export default function RackedTracker({ session }) {
               history={history}
               setsDone={setsDoneFor(ex)}
               onLog={(w, r, effort) => handleLog(ex, w, r, effort)}
-              onOpenChart={() => setChartEx(ex)}
+              onOpenChart={() => navigate(`/exercise/${key}`)}
               onSwap={(altName) => handleSwap(base, altName)}
             />
           );
@@ -1112,42 +495,10 @@ export default function RackedTracker({ session }) {
         />
       )}
 
-      {prToast && (
-        <div
-          style={{
-            position: "fixed",
-            top: "calc(14px + env(safe-area-inset-top))",
-            left: 0,
-            right: 0,
-            display: "flex",
-            justifyContent: "center",
-            padding: "0 16px",
-            pointerEvents: "none",
-            zIndex: 30,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              background: "#1B1E22",
-              border: "1px solid #FACC15",
-              borderRadius: 999,
-              padding: "8px 16px",
-              boxShadow: "0 8px 24px rgba(0, 0, 0, 0.5)",
-            }}
-          >
-            <Trophy size={14} color="#FACC15" />
-            <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, fontWeight: 600, color: "#F5F6F7" }}>
-              {prToast}
-            </span>
-          </div>
-        </div>
-      )}
+      {prToast && <PRToast message={prToast} />}
 
-      {chartEx && (
-        <ExerciseDetail ex={chartEx} history={logs[slug(chartEx.name)] || []} onClose={() => setChartEx(null)} />
+      {detailEx && (
+        <ExerciseDetail ex={detailEx} history={logs[slug(detailEx.name)] || []} onClose={() => navigate("/")} />
       )}
     </div>
   );
