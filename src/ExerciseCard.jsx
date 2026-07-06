@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { PlayCircle, Check, TrendingUp, TrendingDown, Minus, Repeat } from "lucide-react";
+import { PlayCircle, Check, TrendingUp, TrendingDown, Minus, Repeat, BarChart3 } from "lucide-react";
 import { CAT_COLOR, isTimeBased, isBodyweightEx, exMetric } from "./planUtils.js";
 import { computeSuggestion, targetNumber } from "./progression.js";
 import { Sparkline } from "./charts.jsx";
@@ -81,14 +81,21 @@ export default function ExerciseCard({ ex, primary, history, setsDone, onLog, on
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          {history.length >= 2 && (
+          {/* Detail-view entry point: the sparkline once there's a trend to
+              draw, a plain chart icon for a single logged set — without it,
+              a one-set history would be unreachable (and uneditable). */}
+          {history.length >= 1 && (
             <button
               type="button"
               onClick={onOpenChart}
               aria-label={`Progress chart for ${ex.name}`}
-              style={{ background: "transparent", border: "none", padding: "2px 0", cursor: "pointer" }}
+              style={{ background: "transparent", border: "none", padding: "2px 0", cursor: "pointer", display: "flex", alignItems: "center" }}
             >
-              <Sparkline values={history.map((e) => exMetric(ex, e))} color={CAT_COLOR[ex.cat]} />
+              {history.length >= 2 ? (
+                <Sparkline values={history.map((e) => exMetric(ex, e))} color={CAT_COLOR[ex.cat]} />
+              ) : (
+                <BarChart3 size={16} color="#6B7280" />
+              )}
             </button>
           )}
           <span

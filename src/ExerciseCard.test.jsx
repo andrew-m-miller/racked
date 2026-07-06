@@ -209,4 +209,40 @@ describe("ExerciseCard", () => {
     expect(screen.queryByPlaceholderText("lb")).toBeNull();
     expect(screen.getByLabelText(`Progress chart for ${ex.name}`)).toBeTruthy();
   });
+
+  it("opens the detail view from a single-set history via the icon fallback", () => {
+    const ex = makeEx();
+    const onOpenChart = vi.fn();
+    const { container } = render(
+      <ExerciseCard
+        ex={ex}
+        primary={ex}
+        history={[makeHistory()[0]]}
+        setsDone={0}
+        onLog={() => {}}
+        onOpenChart={onOpenChart}
+        onSwap={() => {}}
+      />
+    );
+    // One point can't draw a trend line — the button falls back to an icon.
+    expect(container.querySelector("polyline")).toBeNull();
+    fireEvent.click(screen.getByLabelText(`Progress chart for ${ex.name}`));
+    expect(onOpenChart).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers no detail-view button for a never-logged exercise", () => {
+    const ex = makeEx();
+    render(
+      <ExerciseCard
+        ex={ex}
+        primary={ex}
+        history={[]}
+        setsDone={0}
+        onLog={() => {}}
+        onOpenChart={() => {}}
+        onSwap={() => {}}
+      />
+    );
+    expect(screen.queryByLabelText(`Progress chart for ${ex.name}`)).toBeNull();
+  });
 });
