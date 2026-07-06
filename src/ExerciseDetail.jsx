@@ -267,12 +267,66 @@ export default function ExerciseDetail({ ex, history, onClose, onUpdateSet, onDe
             const hasPr = prEntry && date === prEntry.date && sets.includes(prEntry);
             const editable = onUpdateSet && onDeleteSet && sets.every((s) => s.id != null);
             const editing = editable && editDate === date;
+            const toggleBtn = editable && (
+              <button
+                type="button"
+                onClick={() => setEditDate(editing ? null : date)}
+                aria-label={editing ? `Done editing ${longDate(date)}` : `Edit sets from ${longDate(date)}`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  marginLeft: "auto",
+                  flexShrink: 0,
+                  background: "transparent",
+                  border: "none",
+                  color: editing ? "#5EC8D8" : "#3A3F45",
+                  cursor: "pointer",
+                  padding: 3,
+                }}
+              >
+                {editing ? <Check size={14} /> : <Pencil size={13} />}
+              </button>
+            );
+            // Edit mode stacks the date above the set editors so they get the
+            // full card width — beside the 86px date column, the editor row
+            // overflows a phone-width screen (the trash icon rendered outside
+            // the card).
+            if (editing) {
+              return (
+                <div
+                  key={date}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    padding: "9px 14px",
+                    borderTop: i === 0 ? "none" : "1px solid #2A2E33",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5, color: "#6B7280" }}>
+                      {longDate(date)}
+                    </span>
+                    {toggleBtn}
+                  </div>
+                  {sets.map((set) => (
+                    <SetEditor
+                      key={set.id}
+                      ex={ex}
+                      set={set}
+                      onSave={(fields) => onUpdateSet(set.id, fields)}
+                      onDelete={() => onDeleteSet(set.id)}
+                    />
+                  ))}
+                </div>
+              );
+            }
             return (
               <div
                 key={date}
                 style={{
                   display: "flex",
-                  alignItems: editing ? "flex-start" : "baseline",
+                  alignItems: "baseline",
                   gap: 10,
                   padding: "9px 14px",
                   borderTop: i === 0 ? "none" : "1px solid #2A2E33",
@@ -281,44 +335,11 @@ export default function ExerciseDetail({ ex, history, onClose, onUpdateSet, onDe
                 <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5, color: "#6B7280", flexShrink: 0, width: 86 }}>
                   {longDate(date)}
                 </span>
-                {editing ? (
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
-                    {sets.map((set) => (
-                      <SetEditor
-                        key={set.id}
-                        ex={ex}
-                        set={set}
-                        onSave={(fields) => onUpdateSet(set.id, fields)}
-                        onDelete={() => onDeleteSet(set.id)}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, color: "#F5F6F7", flex: 1 }}>
-                    {fmtSets(ex, sets)}
-                  </span>
-                )}
-                {hasPr && !editing && <Trophy size={12} color="#FACC15" style={{ flexShrink: 0, alignSelf: "center" }} />}
-                {editable && (
-                  <button
-                    type="button"
-                    onClick={() => setEditDate(editing ? null : date)}
-                    aria-label={editing ? `Done editing ${longDate(date)}` : `Edit sets from ${longDate(date)}`}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      alignSelf: editing ? "flex-start" : "center",
-                      flexShrink: 0,
-                      background: "transparent",
-                      border: "none",
-                      color: editing ? "#5EC8D8" : "#3A3F45",
-                      cursor: "pointer",
-                      padding: 3,
-                    }}
-                  >
-                    {editing ? <Check size={14} /> : <Pencil size={13} />}
-                  </button>
-                )}
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, color: "#F5F6F7", flex: 1 }}>
+                  {fmtSets(ex, sets)}
+                </span>
+                {hasPr && <Trophy size={12} color="#FACC15" style={{ flexShrink: 0, alignSelf: "center" }} />}
+                {toggleBtn}
               </div>
             );
           })}
