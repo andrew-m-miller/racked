@@ -109,10 +109,10 @@ to their owner.
 
 ### AI coach (stretch) — one-time Edge Function setup
 
-The weekly recap (Progress → Weekly recap) works with zero setup: **Copy for
-Claude** pastes into the Claude app. The in-app **Get coach review** button
-needs the `coach` Edge Function deployed once, so your Anthropic API key stays
-server-side:
+The raw weekly recap (Progress → Weekly coach → Raw recap) works with zero
+setup: **Copy for Claude** pastes into the Claude app. The in-app **Get coach
+review** flow needs the `coach` Edge Function deployed once, so your Anthropic
+API key stays server-side:
 
 **Dashboard path (no tooling):** Supabase → Edge Functions → Deploy a new
 function → name it `coach`, paste `supabase/functions/coach/index.ts`, deploy.
@@ -186,6 +186,40 @@ Cost: one plan generation is a few thousand tokens (~a cent); the background
 video search runs ~15–35 web searches per new plan (≈$0.15–0.35 at $10/1k
 searches), and the cache makes repeat exercises free.
 
+### Phase 9 — unified coaching (coach-run cache + history)
+
+Phase 9 makes the in-app coach the primary weekly view and caches each week's
+review, so opening the app shows the last run instantly instead of waiting on
+a cold call — and past weeks stay readable as history, including which
+suggestions were applied. Run in the SQL Editor:
+
+```sql
+-- One cached coach review per (user, week). `review` is the edge function's
+-- {narrative, suggestions[]}; `applied` maps suggestion index -> {inverse}
+-- so one-tap Apply has a matching one-tap Undo across reloads.
+create table coach_runs (
+  user_id    uuid not null default auth.uid(),
+  week_start date not null,
+  review     jsonb not null,
+  applied    jsonb not null default '{}'::jsonb,
+  updated_at timestamptz default now(),
+  primary key (user_id, week_start)
+);
+
+alter table coach_runs enable row level security;
+create policy "Own rows" on coach_runs for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+
+Fails soft: without the table the coach still works, the review just isn't
+remembered between sessions (no cache, no history, and the weekly auto-run
+stays off so it can't spend an API call on every open).
+
+The optional **auto-run** toggle (Progress → Weekly coach) reviews the week
+that just finished on your first open of a new week — the client-side
+equivalent of the roadmap's Sunday-night cron, with no extra infrastructure.
+It's per-device (localStorage) and off by default.
+
 ### 2. Environment variables
 
 Copy `.env.example` to `.env` and fill in your credentials:
@@ -246,9 +280,12 @@ Live at `https://andrew-m-miller.github.io/racked/`.
   the database is no longer world-writable
 - Finisher logging: minutes + optional machine/mode, counted in the session
   summary and consistency calendar — a complete workout means lifts *and* cardio
-- Weekly recap: the week's sessions, volume, bodyweight trend, and per-lift
-  detail as a paste-ready block for a coaching chat in the Claude app
-- In-app AI coach: the recap goes to Claude Opus 4.8 via a Supabase Edge
-  Function (API key stays server-side); advice renders in-app with one-tap
-  "Apply to plan" tweaks wired into the plan editor's storage
+- Weekly coach: the week's sessions, volume, bodyweight trend, and per-lift
+  detail go to Claude via a Supabase Edge Function (API key stays server-side);
+  the narrative + suggestions render in-app with one-tap "Apply to plan" and
+  Undo, each week's review is cached (instant on next open) and kept as
+  browsable history, and an optional auto-run reviews the finished week on the
+  first open of a new one
+- Raw recap fallback: the same weekly summary as a paste-ready block for a
+  coaching chat in the Claude app — works with zero backend setup
 - Data persisted in Supabase Postgres, so your log follows you across devices
