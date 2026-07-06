@@ -246,12 +246,14 @@ function HealthSyncBlock() {
           {showHow && (
             <div style={{ ...hintText, marginTop: 12, borderTop: "1px solid #2A2E33", paddingTop: 12 }}>
               <div style={{ color: "#9AA1AC", fontWeight: 600, marginBottom: 4 }}>Weigh-ins → Racked (iPhone)</div>
-              1. Shortcuts app → new shortcut → <em>Find Health Samples</em>: type Weight, sort Newest, limit 1.
+              1. Shortcuts app → new shortcut → <em>Find Health Samples</em>: Type is Weight; Sort by Start Date,
+              Order Latest First; Limit 1. A Start Date filter condition is optional — delete it or keep "in the
+              last week", either works.
               <br />
               2. <em>Get Contents of URL</em>: the URL above, Method POST, Request Body JSON —{" "}
-              <span style={{ fontFamily: MONO }}>weight_lb</span> = the sample's value,{" "}
-              <span style={{ fontFamily: MONO }}>date</span> = Current Date formatted{" "}
-              <span style={{ fontFamily: MONO }}>yyyy-MM-dd</span>.
+              <span style={{ fontFamily: MONO }}>weight_lb</span> (Number) = the sample's value,{" "}
+              <span style={{ fontFamily: MONO }}>date</span> (Text) = the sample's Start Date property, Date Format
+              Custom <span style={{ fontFamily: MONO }}>yyyy-MM-dd</span>.
               <br />
               3. Automation: run it daily after your usual weigh-in time. Re-sends of the same weight/date are
               ignored, so re-runs are safe.
