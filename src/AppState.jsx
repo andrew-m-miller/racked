@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { loadLogs, addLogEntry, clearAllLogs, loadWeighIns, addWeighIn, loadPlan, savePlan, loadCoachRuns, saveCoachRun, flushPending, onPendingChange } from "./storage.js";
+import { loadLogs, addLogEntry, updateLogEntry, deleteLogEntry, clearAllLogs, loadWeighIns, addWeighIn, loadPlan, savePlan, loadCoachRuns, saveCoachRun, flushPending, onPendingChange, newClientId } from "./storage.js";
 import { SEED_DAYS, SEED_META } from "./planUtils.js";
 import { upsertRun } from "./coachUtils.js";
 
@@ -74,16 +74,54 @@ export function AppStateProvider({ children }) {
   // Append one logged set under `key`. Updates optimistically so the UI feels
   // instant; a functional updater keeps concurrent writes from clobbering each
   // other, and rollback drops just this entry (by reference) so an in-flight
-  // sibling write survives a failure here.
+  // sibling write survives a failure here. Every entry gets a client temp id
+  // up front so it's editable/deletable immediately — storage translates it
+  // to the server pk once the insert lands (Phase 12).
   const logEntry = useCallback((key, entry) => {
-    setLogs((prev) => ({ ...prev, [key]: [...(prev[key] || []), entry] }));
-    addLogEntry(key, entry.date, entry.weight, entry.reps, entry.effort ?? null, entry.note ?? null)
+    const withId = { ...entry, id: newClientId() };
+    setLogs((prev) => ({ ...prev, [key]: [...(prev[key] || []), withId] }));
+    addLogEntry(key, withId.date, withId.weight, withId.reps, withId.effort ?? null, withId.note ?? null, withId.id)
       .then(() => setSaveError(false))
       .catch(() => {
-        setLogs((prev) => ({ ...prev, [key]: (prev[key] || []).filter((x) => x !== entry) }));
+        setLogs((prev) => ({ ...prev, [key]: (prev[key] || []).filter((x) => x !== withId) }));
         setSaveError(true);
       });
   }, []);
+
+  // Edit one logged set in place (weight/reps/effort/note — never the date).
+  // Optimistic patch by id with a rollback that restores the exact previous
+  // entry object, so a failure can't leave a half-applied edit behind.
+  const updateEntry = useCallback((key, id, fields) => {
+    const previous = (logs[key] || []).find((x) => x.id === id);
+    if (!previous) return;
+    setLogs((prev) => ({ ...prev, [key]: (prev[key] || []).map((x) => (x.id === id ? { ...x, ...fields } : x)) }));
+    updateLogEntry(id, fields)
+      .then(() => setSaveError(false))
+      .catch(() => {
+        setLogs((prev) => ({ ...prev, [key]: (prev[key] || []).map((x) => (x.id === id ? previous : x)) }));
+        setSaveError(true);
+      });
+  }, [logs]);
+
+  // Delete one logged set. Rollback re-inserts the entry at its old index so
+  // set order within the session survives a failed delete.
+  const deleteEntry = useCallback((key, id) => {
+    const entries = logs[key] || [];
+    const index = entries.findIndex((x) => x.id === id);
+    if (index < 0) return;
+    const removed = entries[index];
+    setLogs((prev) => ({ ...prev, [key]: (prev[key] || []).filter((x) => x.id !== id) }));
+    deleteLogEntry(id)
+      .then(() => setSaveError(false))
+      .catch(() => {
+        setLogs((prev) => {
+          const arr = [...(prev[key] || [])];
+          arr.splice(Math.min(index, arr.length), 0, removed);
+          return { ...prev, [key]: arr };
+        });
+        setSaveError(true);
+      });
+  }, [logs]);
 
   const logWeighIn = useCallback((date, weightLb) => {
     const entry = { date, weight: String(weightLb) };
@@ -141,12 +179,14 @@ export function AppStateProvider({ children }) {
       saveError,
       pendingSync,
       logEntry,
+      updateEntry,
+      deleteEntry,
       logWeighIn,
       saveLivePlan,
       recordCoachRun,
       clearLogs,
     }),
-    [logs, weighIns, days, planMeta, coachRuns, loaded, isNewUser, saveError, pendingSync, logEntry, logWeighIn, saveLivePlan, recordCoachRun, clearLogs]
+    [logs, weighIns, days, planMeta, coachRuns, loaded, isNewUser, saveError, pendingSync, logEntry, updateEntry, deleteEntry, logWeighIn, saveLivePlan, recordCoachRun, clearLogs]
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

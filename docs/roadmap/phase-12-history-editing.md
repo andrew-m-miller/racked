@@ -50,3 +50,30 @@ through the existing storage/optimistic-update/queue machinery.
 - Bulk import / re-import of exported JSON/CSV.
 - Any change to how progression interprets history — this phase makes the data
   correctable, not the engine smarter.
+
+## Shipped notes (July 2026)
+
+Where the implementation diverged from (or refined) the plan above:
+
+- **No RLS migration was needed.** The plan assumed the original policies were
+  select/insert-only, but Phase 4 created `"Own rows" on logs for all`, which
+  already covers update/delete. README's Phase 12 section documents this and
+  carries the policy SQL only for forks that tightened it.
+- **Temp-id correlation is broader than the queue.** Every new entry gets a
+  client id (`storage.newClientId`) at log time — not just queued ones — so a
+  set is editable immediately. When its insert lands, `performOp` records the
+  temp→server id mapping (`insert ... select id`); edits translate through it.
+  The queue-rewrite path (`syncQueue.rewriteOps`) handles the still-pending
+  case: edits fold into the queued insert's row, deletes drop the op.
+- **Queued update/delete ops are layered onto reads** the same way pending
+  inserts always were, so an offline edit survives a reload against the
+  snapshot. Entries from a pre-Phase-12 snapshot have no id and render
+  read-only rather than erroring.
+- **Edits change weight/reps/effort (and keep note), never the date** — moving
+  a set between days stays out of scope; delete + backfill covers it.
+- **Backfill suppresses the rest timer, rest push, and PR toast** (a "PR"
+  judged only against history before a past date may not be an all-time best),
+  and the whole workout view — set counts, finisher, completion — re-anchors
+  on the picked date. Picking a date whose logs vote a plan day wins switches
+  the active tab automatically (`dayForDate`); a blank date leaves the tab
+  for the user to choose.
