@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Dumbbell, RotateCcw, BarChart3, Pencil, CloudOff, LogOut } from "lucide-react";
+import { Dumbbell, RotateCcw, BarChart3, Pencil, CloudOff, LogOut, CalendarDays } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { SEED_DAYS, SEED_META, slug, exMetric, metricUnit, dayForDate, finisherSlug, localDateKey, applyPlanChange } from "./planUtils.js";
 import { useAppState } from "./AppState.jsx";
@@ -46,13 +46,14 @@ function pickInitialDay(days, logs, today) {
 // the hash route; what lives here is the workout-session state (active day,
 // rest timer, swaps, PR toast) and the handlers that tie them together.
 export default function RackedTracker({ session }) {
-  const { logs, days, planMeta, loaded, isNewUser, saveError, pendingSync, logEntry, saveLivePlan, clearLogs } = useAppState();
+  const { logs, days, planMeta, loaded, isNewUser, saveError, pendingSync, logEntry, updateEntry, deleteEntry, saveLivePlan, clearLogs } = useAppState();
   const [route, navigate] = useHashRoute();
   const view = route.view; // "workout" | "progress" | "edit" | "onboard"
   useAutoCoach(); // opt-in weekly check-in: pre-runs the coach for the week that just ended
 
   const [activeDay, setActiveDay] = useState(SEED_DAYS[0].id);
   const [restEndsAt, setRestEndsAt] = useState(null);
+  const [logDate, setLogDate] = useState(null); // YYYY-MM-DD when backfilling a past workout; null = today
   const [onboardMode, setOnboardMode] = useState("new"); // "new" first-run · "replace" from the plan editor
   const [swaps, setSwaps] = useState({}); // session-scoped substitutions: { primarySlug: altName }
   const [prToast, setPrToast] = useState(null);
@@ -86,6 +87,24 @@ export default function RackedTracker({ session }) {
 
   const day = days.find((d) => d.id === activeDay) || days[0];
   const today = localDateKey();
+  // Backfill (Phase 12): every session computation below runs against the
+  // date being logged, so picking a past date shows that day's sets/finisher
+  // state instead of today's. `today` itself stays the real calendar day.
+  const viewDate = logDate || today;
+  const backfilling = viewDate !== today;
+
+  // Picking a past date jumps to the plan day trained on it (when its logs
+  // can vote one in); a date with no logs keeps the current tab so the user
+  // chooses which day they're backfilling.
+  const handlePickDate = (dateStr) => {
+    const next = dateStr && dateStr !== today ? dateStr : null;
+    setLogDate(next);
+    if (next) {
+      setRestEndsAt(null);
+      const trained = dayForDate(days, logs, next);
+      if (trained) setActiveDay(trained);
+    }
+  };
 
   // Session-scoped substitution: a swapped exercise takes the slot but keeps
   // its own slug, history, and progression.
@@ -127,39 +146,43 @@ export default function RackedTracker({ session }) {
   const handleLog = (ex, weight, reps, effort) => {
     const key = slug(ex.name);
     const history = logs[key] || [];
-    const entry = { date: today, weight, reps, effort: effort ?? null };
+    const entry = { date: viewDate, weight, reps, effort: effort ?? null };
     logEntry(key, entry);
     if (!sessionStartRef.current) sessionStartRef.current = Date.now();
 
     // PR celebration: only against history from before today, so the first
-    // session (and each set after a PR today) doesn't re-trigger it.
-    const prior = history.filter((h) => h.date < today);
+    // session (and each set after a PR today) doesn't re-trigger it. Skipped
+    // while backfilling — beating the history *before a past date* isn't
+    // necessarily an all-time PR, and the moment has passed anyway.
+    const prior = history.filter((h) => h.date < viewDate);
     const bestPrior = prior.reduce((m, e) => Math.max(m, exMetric(ex, e)), 0);
     const value = exMetric(ex, entry);
-    if (prior.length > 0 && value > bestPrior) {
+    if (!backfilling && prior.length > 0 && value > bestPrior) {
       setPrToast(`New PR — ${ex.name}: ${value} ${metricUnit(ex)}`);
       if (navigator.vibrate) navigator.vibrate(100);
       clearTimeout(prToastTimerRef.current);
       prToastTimerRef.current = setTimeout(() => setPrToast(null), 4000);
     }
     // Rest between sets — but not after the last lifting set, where the
-    // finisher (and then the session summary) takes over. Only this exercise's
-    // count changed, so evaluate it against the just-added entry.
+    // finisher (and then the session summary) takes over, and not while
+    // backfilling (nobody rests between sets they did last Tuesday). Only
+    // this exercise's count changed, so evaluate it against the just-added
+    // entry.
     const nextForKey = [...history, entry];
     const liftsDoneNow = activeExercises.every((e) => {
       const h = slug(e.name) === key ? nextForKey : logs[slug(e.name)] || [];
-      return h.filter((x) => x.date === today).length >= e.sets;
+      return h.filter((x) => x.date === viewDate).length >= e.sets;
     });
-    setRestEndsAt(liftsDoneNow ? null : Date.now() + REST_SECONDS * 1000);
+    setRestEndsAt(liftsDoneNow || backfilling ? null : Date.now() + REST_SECONDS * 1000);
     // Backgrounded phones freeze the in-page timer (especially iOS PWAs), so
     // mirror it with a server-scheduled push; the service worker drops it if
     // the app is still on screen.
-    if (!liftsDoneNow && pushEnabled()) scheduleRestPush(REST_SECONDS);
+    if (!liftsDoneNow && !backfilling && pushEnabled()) scheduleRestPush(REST_SECONDS);
   };
 
   const handleLogFinisher = (minutes, mode) => {
     const key = finisherSlug(day.id);
-    logEntry(key, { date: today, weight: "", reps: String(minutes), effort: null, note: mode || null });
+    logEntry(key, { date: viewDate, weight: "", reps: String(minutes), effort: null, note: mode || null });
     if (!sessionStartRef.current) sessionStartRef.current = Date.now();
   };
 
@@ -188,19 +211,19 @@ export default function RackedTracker({ session }) {
     }
   };
 
-  const setsDoneFor = (ex) => (logs[slug(ex.name)] || []).filter((h) => h.date === today).length;
+  const setsDoneFor = (ex) => (logs[slug(ex.name)] || []).filter((h) => h.date === viewDate).length;
   const totalSets = activeExercises.reduce((n, ex) => n + ex.sets, 0);
   const setsDoneToday = activeExercises.reduce((n, ex) => n + Math.min(setsDoneFor(ex), ex.sets), 0);
   // A complete workout = every lift set logged AND the cardio finisher —
   // which is the point of the program.
-  const finisherToday = (logs[finisherSlug(day.id)] || []).filter((e) => e.date === today);
+  const finisherToday = (logs[finisherSlug(day.id)] || []).filter((e) => e.date === viewDate);
   const finisherDone = finisherToday.length > 0;
   const cardioMin = finisherToday.reduce((n, e) => n + (parseFloat(e.reps) || 0), 0);
   const liftsDone = activeExercises.every((ex) => setsDoneFor(ex) >= ex.sets);
   const dayComplete = liftsDone && finisherDone;
-  const stats = dayComplete ? sessionStats(activeExercises, logs, today) : null;
+  const stats = dayComplete ? sessionStats(activeExercises, logs, viewDate) : null;
   const durationMin =
-    dayComplete && sessionStartRef.current
+    dayComplete && !backfilling && sessionStartRef.current
       ? Math.max(1, Math.round((Date.now() - sessionStartRef.current) / 60000))
       : null;
 
@@ -386,6 +409,56 @@ export default function RackedTracker({ session }) {
         {/* Day selector */}
         <DayTabs days={days} activeDay={activeDay} onSelect={setActiveDay} />
 
+        {/* Backfill: log a forgotten workout under its real date. Progression
+            reads "last entry" by date, so an older backfill can't disturb the
+            current suggestion. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <CalendarDays size={13} color={backfilling ? "#FACC15" : "#3A3F45"} style={{ flexShrink: 0 }} />
+          <input
+            type="date"
+            value={viewDate}
+            max={today}
+            onChange={(e) => handlePickDate(e.target.value)}
+            aria-label="Date to log sets under"
+            style={{
+              background: "transparent",
+              border: `1px solid ${backfilling ? "#FACC1555" : "#2A2E33"}`,
+              borderRadius: 6,
+              color: backfilling ? "#FDE68A" : "#6B7280",
+              colorScheme: "dark",
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 11.5,
+              padding: "3px 6px",
+              outline: "none",
+            }}
+          />
+          {backfilling && (
+            <>
+              <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 11.5, color: "#FDE68A" }}>
+                backfilling — sets save to this date
+              </span>
+              <button
+                type="button"
+                onClick={() => handlePickDate(today)}
+                style={{
+                  marginLeft: "auto",
+                  background: "transparent",
+                  border: "1px solid #2A2E33",
+                  borderRadius: 6,
+                  color: "#9AA1AC",
+                  cursor: "pointer",
+                  fontFamily: "'Inter', sans-serif",
+                  fontSize: 11.5,
+                  padding: "3px 8px",
+                  flexShrink: 0,
+                }}
+              >
+                back to today
+              </button>
+            </>
+          )}
+        </div>
+
         {/* Day title + progress */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
           <h2
@@ -402,7 +475,7 @@ export default function RackedTracker({ session }) {
             {day.name}
           </h2>
           <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, color: "#6B7280" }}>
-            {setsDoneToday}/{totalSets} sets today
+            {setsDoneToday}/{totalSets} sets {backfilling ? "that day" : "today"}
           </span>
         </div>
 
@@ -501,7 +574,13 @@ export default function RackedTracker({ session }) {
       {prToast && <PRToast message={prToast} />}
 
       {detailEx && (
-        <ExerciseDetail ex={detailEx} history={logs[slug(detailEx.name)] || []} onClose={() => navigate("/")} />
+        <ExerciseDetail
+          ex={detailEx}
+          history={logs[slug(detailEx.name)] || []}
+          onClose={() => navigate("/")}
+          onUpdateSet={(id, fields) => updateEntry(slug(detailEx.name), id, fields)}
+          onDeleteSet={(id) => deleteEntry(slug(detailEx.name), id)}
+        />
       )}
     </div>
   );

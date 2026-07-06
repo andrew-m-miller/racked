@@ -5,6 +5,7 @@ import {
   runOrQueue,
   flush,
   discardOps,
+  rewriteOps,
   pendingOps,
   pendingCount,
   onPendingChange,
@@ -187,6 +188,40 @@ describe("discardOps", () => {
 
     expect(pendingOps()).toEqual([{ table: "weighIns", id: 2 }]);
     expect(pendingCount()).toBe(1);
+  });
+});
+
+describe("rewriteOps", () => {
+  it("rewrites a matching op in place, preserving queue order", () => {
+    const ops = [
+      { table: "logs", cid: "c-1", row: { weight: 855 } },
+      { table: "logs", cid: "c-2", row: { weight: 100 } },
+    ];
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(ops));
+
+    rewriteOps((op) => (op.cid === "c-1" ? { ...op, row: { ...op.row, weight: 185 } } : op));
+
+    expect(pendingOps()).toEqual([
+      { table: "logs", cid: "c-1", row: { weight: 185 } },
+      { table: "logs", cid: "c-2", row: { weight: 100 } },
+    ]);
+  });
+
+  it("drops an op when the rewriter returns null and notifies listeners", () => {
+    const ops = [
+      { table: "logs", cid: "c-1", row: {} },
+      { table: "logs", cid: "c-2", row: {} },
+    ];
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(ops));
+
+    const counts = [];
+    const unsubscribe = onPendingChange((n) => counts.push(n));
+
+    rewriteOps((op) => (op.cid === "c-1" ? null : op));
+
+    expect(pendingOps()).toEqual([{ table: "logs", cid: "c-2", row: {} }]);
+    expect(counts).toEqual([2, 1]);
+    unsubscribe();
   });
 });
 

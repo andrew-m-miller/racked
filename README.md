@@ -517,6 +517,27 @@ automations can't miss a US-timezone workout, and the app's offline
 queue/snapshot in localStorage is scoped per account, so two people sharing
 one browser can't bleed data into each other.
 
+### Phase 12 — set history editing (no migration needed)
+
+Phase 12 adds edit/delete for individual logged sets (from the exercise
+detail view) and backfilling past workouts (date picker on the workout view).
+**No SQL to run**: the `"Own rows"` policy on `logs` was created `for all`
+back in Phase 4, so per-user `update`/`delete` were already permitted — the
+gap was purely client-side (the app never issued them, and didn't read back
+row `id`s to target). If a fork ever tightened that policy to
+select/insert-only, restore parity with:
+
+```sql
+-- Only needed if your logs policy isn't "for all" (the stock setup is).
+create policy "Own rows update" on logs for update to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Own rows delete" on logs for delete to authenticated
+  using (auth.uid() = user_id);
+```
+
+Fail-soft during rollout: a missing/denied policy just surfaces the app's
+existing red error banner and the optimistic edit rolls back — nothing wedges.
+
 ### 2. Environment variables
 
 Copy `.env.example` to `.env` and fill in your credentials:
@@ -561,6 +582,8 @@ Live at `https://andrew-m-miller.github.io/racked/`.
 - Progress screen: bodyweight trend (7-day smoothed), streak counters, and a
   plate-colored consistency calendar
 - Tappable sparkline on each card opens a full progress chart with the all-time PR
+- Fix history from the detail view: edit a mis-typed set's weight/reps/effort or
+  delete it outright, and backfill a forgotten workout under its real date
 - PR toast when a set beats your all-time best
 - Optional easy/right/brutal effort rating per set that tunes the progression
   (hold after a brutal session, bigger jumps after easy lower-body work, and

@@ -107,3 +107,11 @@ export async function flush(perform) {
 export function discardOps(predicate) {
   write(read().filter((op) => !predicate(op)));
 }
+
+// Rewrite queued ops in place, preserving order: `fn` returns the replacement
+// op, or null to drop it. This is how an edit/delete targeting an entry whose
+// insert is still pending folds into the queued op — the server row doesn't
+// exist yet, so emitting an UPDATE/DELETE for it would hit nothing.
+export function rewriteOps(fn) {
+  write(read().map(fn).filter(Boolean));
+}
