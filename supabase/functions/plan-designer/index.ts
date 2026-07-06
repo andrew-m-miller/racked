@@ -45,13 +45,18 @@ const PLATES = ["#3B82F6", "#FACC15", "#22C55E", "#E8967A", "#B9A6E0"];
 // The model only proposes names and numbers — ids/labels/plates/urls are
 // assembled post-parse. No numeric constraints in the schema (structured
 // outputs strip them); ranges are enforced via the prompt + clamping below.
-const Alt = z.object({ name: z.string(), start: z.string() });
+// Equipment tags (Phase 13) drive the app's travel-mode profile matching —
+// same fixed vocabulary as src/equipment.js. Old plan rows without them fall
+// back to a client-side name guess, so the field is additive.
+const Equip = z.enum(["barbell", "dumbbell", "machine", "cable", "bodyweight"]);
+const Alt = z.object({ name: z.string(), start: z.string(), equip: Equip });
 const Exercise = z.object({
   name: z.string(),
   cat: z.enum(["Upper", "Lower", "Core"]),
   sets: z.number(),
   reps: z.string(),
   start: z.string(),
+  equip: Equip,
   alts: z.array(Alt),
 });
 const Day = z.object({ name: z.string(), finisher: z.string(), exercises: z.array(Exercise) });
@@ -81,6 +86,12 @@ Hard format rules — the app parses these fields mechanically:
   "30–35 lb DB", "70–90 lb") or be exactly "Bodyweight" for unweighted moves.
 - "cat" is Upper, Lower, or Core. The app auto-progresses +5 lb upper /
   +10 lb lower at the rep target, +5-10 sec on core holds.
+- "equip" tags what the move needs: barbell, dumbbell, machine, cable, or
+  bodyweight. Tag by the required apparatus, not the load — a hanging knee
+  raise or back-extension bench is "machine" even though it logs bodyweight.
+  The app uses these to bulk-swap sessions when the user is travelling, so
+  where sensible give each weighted lift at least one dumbbell or bodyweight
+  alternate.
 
 Plan structure rules:
 - Produce EXACTLY the requested number of days — no more, no fewer. This is
@@ -195,8 +206,9 @@ Deno.serve(async (req) => {
         sets: Math.min(5, Math.max(1, Math.round(ex.sets))),
         reps: ex.reps,
         start: ex.start,
+        equip: ex.equip,
         url: searchUrl(ex.name),
-        alts: ex.alts.map((a) => ({ name: a.name, start: a.start, url: searchUrl(a.name) })),
+        alts: ex.alts.map((a) => ({ name: a.name, start: a.start, equip: a.equip, url: searchUrl(a.name) })),
       })),
     }));
 

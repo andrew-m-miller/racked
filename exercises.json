@@ -13,35 +13,40 @@
       "plate": "#3B82F6",
       "finisher": "12–15 min incline treadmill walk or bike intervals",
       "exercises": [
-        { "name": "Goblet Squat", "cat": "Lower", "sets": 3, "reps": "12", "start": "30–35 lb DB", "url": "https://www.youtube.com/watch?v=gm4ln6PO4rc",
+        { "name": "Goblet Squat", "cat": "Lower", "sets": 3, "reps": "12", "start": "30–35 lb DB", "equip": "dumbbell", "url": "https://www.youtube.com/watch?v=gm4ln6PO4rc",
           "alts": [
-            { "name": "Leg Press", "start": "180–230 lb", "url": "https://www.youtube.com/watch?v=K5n2vg3oZa4" },
-            { "name": "Smith Machine Squat", "start": "95–115 lb", "url": "https://www.youtube.com/results?search_query=smith+machine+squat+form" }
+            { "name": "Leg Press", "start": "180–230 lb", "equip": "machine", "url": "https://www.youtube.com/watch?v=K5n2vg3oZa4" },
+            { "name": "Smith Machine Squat", "start": "95–115 lb", "equip": "machine", "url": "https://www.youtube.com/results?search_query=smith+machine+squat+form" },
+            { "name": "Bodyweight Squat", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=bodyweight+squat+form" }
           ] },
-        { "name": "Seated Cable Row", "cat": "Upper", "sets": 3, "reps": "12", "start": "70–90 lb", "url": "https://www.youtube.com/watch?v=7BkgqzC6WsM",
+        { "name": "Seated Cable Row", "cat": "Upper", "sets": 3, "reps": "12", "start": "70–90 lb", "equip": "cable", "url": "https://www.youtube.com/watch?v=7BkgqzC6WsM",
           "alts": [
-            { "name": "Chest-Supported Dumbbell Row", "start": "30–40 lb DBs", "url": "https://www.youtube.com/results?search_query=chest+supported+dumbbell+row+form" },
-            { "name": "Machine Row", "start": "70–90 lb", "url": "https://www.youtube.com/results?search_query=seated+machine+row+form" }
+            { "name": "Chest-Supported Dumbbell Row", "start": "30–40 lb DBs", "equip": "dumbbell", "url": "https://www.youtube.com/results?search_query=chest+supported+dumbbell+row+form" },
+            { "name": "Machine Row", "start": "70–90 lb", "equip": "machine", "url": "https://www.youtube.com/results?search_query=seated+machine+row+form" },
+            { "name": "Inverted Row", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=inverted+row+form" }
           ] },
-        { "name": "Incline Dumbbell Press", "cat": "Upper", "sets": 3, "reps": "12", "start": "25–30 lb DBs", "url": "https://www.youtube.com/watch?v=awEEyL5zGvU",
+        { "name": "Incline Dumbbell Press", "cat": "Upper", "sets": 3, "reps": "12", "start": "25–30 lb DBs", "equip": "dumbbell", "url": "https://www.youtube.com/watch?v=awEEyL5zGvU",
           "alts": [
-            { "name": "Machine Chest Press", "start": "80–100 lb", "url": "https://www.youtube.com/results?search_query=machine+chest+press+form" },
-            { "name": "Smith Machine Incline Press", "start": "65–95 lb", "url": "https://www.youtube.com/results?search_query=smith+machine+incline+press+form" }
+            { "name": "Machine Chest Press", "start": "80–100 lb", "equip": "machine", "url": "https://www.youtube.com/results?search_query=machine+chest+press+form" },
+            { "name": "Smith Machine Incline Press", "start": "65–95 lb", "equip": "machine", "url": "https://www.youtube.com/results?search_query=smith+machine+incline+press+form" },
+            { "name": "Push-Up", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=push+up+form" }
           ] },
-        { "name": "Dumbbell Romanian Deadlift", "cat": "Lower", "sets": 3, "reps": "12", "start": "30–40 lb DBs", "url": "https://www.youtube.com/watch?v=hQgFixeXdZo",
+        { "name": "Dumbbell Romanian Deadlift", "cat": "Lower", "sets": 3, "reps": "12", "start": "30–40 lb DBs", "equip": "dumbbell", "url": "https://www.youtube.com/watch?v=hQgFixeXdZo",
           "alts": [
-            { "name": "Seated Leg Curl", "start": "70–90 lb", "url": "https://www.youtube.com/results?search_query=seated+leg+curl+form" },
-            { "name": "Back Extension", "start": "Bodyweight", "url": "https://www.youtube.com/results?search_query=back+extension+form" }
+            { "name": "Seated Leg Curl", "start": "70–90 lb", "equip": "machine", "url": "https://www.youtube.com/results?search_query=seated+leg+curl+form" },
+            { "name": "Back Extension", "start": "Bodyweight", "equip": "machine", "url": "https://www.youtube.com/results?search_query=back+extension+form" },
+            { "name": "Glute Bridge", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=glute+bridge+form" }
           ] },
-        { "name": "Cable Tricep Pushdown", "cat": "Upper", "sets": 2, "reps": "15", "start": "30–40 lb", "url": "https://www.youtube.com/watch?v=_w-HpW70nSQ",
+        { "name": "Cable Tricep Pushdown", "cat": "Upper", "sets": 2, "reps": "15", "start": "30–40 lb", "equip": "cable", "url": "https://www.youtube.com/watch?v=_w-HpW70nSQ",
           "alts": [
-            { "name": "Overhead Dumbbell Tricep Extension", "start": "20–25 lb DB", "url": "https://www.youtube.com/results?search_query=overhead+dumbbell+tricep+extension+form" },
-            { "name": "Seated Dip Machine", "start": "70–90 lb", "url": "https://www.youtube.com/results?search_query=seated+dip+machine+form" }
+            { "name": "Overhead Dumbbell Tricep Extension", "start": "20–25 lb DB", "equip": "dumbbell", "url": "https://www.youtube.com/results?search_query=overhead+dumbbell+tricep+extension+form" },
+            { "name": "Seated Dip Machine", "start": "70–90 lb", "equip": "machine", "url": "https://www.youtube.com/results?search_query=seated+dip+machine+form" },
+            { "name": "Diamond Push-Up", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=diamond+push+up+form" }
           ] },
-        { "name": "Plank", "cat": "Core", "sets": 3, "reps": "30–45 sec", "start": "Bodyweight", "url": "https://www.youtube.com/watch?v=A2b2EmIg0dA",
+        { "name": "Plank", "cat": "Core", "sets": 3, "reps": "30–45 sec", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/watch?v=A2b2EmIg0dA",
           "alts": [
-            { "name": "Dead Bug", "start": "Bodyweight", "url": "https://www.youtube.com/results?search_query=dead+bug+exercise+form" },
-            { "name": "Bird Dog", "start": "Bodyweight", "url": "https://www.youtube.com/results?search_query=bird+dog+exercise+form" }
+            { "name": "Dead Bug", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=dead+bug+exercise+form" },
+            { "name": "Bird Dog", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=bird+dog+exercise+form" }
           ] }
       ]
     },
@@ -52,35 +57,42 @@
       "plate": "#FACC15",
       "finisher": "15 min stairmaster or rower, moderate–hard pace",
       "exercises": [
-        { "name": "Barbell/Dumbbell Deadlift", "cat": "Lower", "sets": 3, "reps": "10", "start": "95–135 lb bar", "url": "https://www.youtube.com/watch?v=XxWcirHIwVo",
+        { "name": "Barbell/Dumbbell Deadlift", "cat": "Lower", "sets": 3, "reps": "10", "start": "95–135 lb bar", "equip": "barbell", "url": "https://www.youtube.com/watch?v=XxWcirHIwVo",
           "alts": [
-            { "name": "Trap Bar Deadlift", "start": "135–155 lb", "url": "https://www.youtube.com/results?search_query=trap+bar+deadlift+form" },
-            { "name": "Rack Pull", "start": "135–185 lb", "url": "https://www.youtube.com/results?search_query=rack+pull+form" }
+            { "name": "Trap Bar Deadlift", "start": "135–155 lb", "equip": "barbell", "url": "https://www.youtube.com/results?search_query=trap+bar+deadlift+form" },
+            { "name": "Rack Pull", "start": "135–185 lb", "equip": "barbell", "url": "https://www.youtube.com/results?search_query=rack+pull+form" },
+            { "name": "Dumbbell Deadlift", "start": "40–50 lb DBs", "equip": "dumbbell", "url": "https://www.youtube.com/results?search_query=dumbbell+deadlift+form" },
+            { "name": "Glute Bridge", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=glute+bridge+form" }
           ] },
-        { "name": "Lat Pulldown", "cat": "Upper", "sets": 3, "reps": "12", "start": "70–90 lb", "url": "https://www.youtube.com/watch?v=UTerui_Q7r0",
+        { "name": "Lat Pulldown", "cat": "Upper", "sets": 3, "reps": "12", "start": "70–90 lb", "equip": "cable", "url": "https://www.youtube.com/watch?v=UTerui_Q7r0",
           "alts": [
-            { "name": "Straight-Arm Pulldown", "start": "30–40 lb", "url": "https://www.youtube.com/results?search_query=straight+arm+pulldown+form" },
-            { "name": "Single-Arm Lat Pulldown", "start": "40–50 lb", "url": "https://www.youtube.com/results?search_query=single+arm+lat+pulldown+form" }
+            { "name": "Straight-Arm Pulldown", "start": "30–40 lb", "equip": "cable", "url": "https://www.youtube.com/results?search_query=straight+arm+pulldown+form" },
+            { "name": "Single-Arm Lat Pulldown", "start": "40–50 lb", "equip": "cable", "url": "https://www.youtube.com/results?search_query=single+arm+lat+pulldown+form" },
+            { "name": "One-Arm Dumbbell Row", "start": "30–40 lb DB", "equip": "dumbbell", "url": "https://www.youtube.com/results?search_query=one+arm+dumbbell+row+form" },
+            { "name": "Inverted Row", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=inverted+row+form" }
           ] },
-        { "name": "Dumbbell Shoulder Press", "cat": "Upper", "sets": 3, "reps": "12", "start": "20–25 lb DBs", "url": "https://www.youtube.com/watch?v=1jYq9QQEWqE",
+        { "name": "Dumbbell Shoulder Press", "cat": "Upper", "sets": 3, "reps": "12", "start": "20–25 lb DBs", "equip": "dumbbell", "url": "https://www.youtube.com/watch?v=1jYq9QQEWqE",
           "alts": [
-            { "name": "Machine Shoulder Press", "start": "50–70 lb", "url": "https://www.youtube.com/results?search_query=machine+shoulder+press+form" },
-            { "name": "Arnold Press", "start": "15–20 lb DBs", "url": "https://www.youtube.com/results?search_query=arnold+press+form" }
+            { "name": "Machine Shoulder Press", "start": "50–70 lb", "equip": "machine", "url": "https://www.youtube.com/results?search_query=machine+shoulder+press+form" },
+            { "name": "Arnold Press", "start": "15–20 lb DBs", "equip": "dumbbell", "url": "https://www.youtube.com/results?search_query=arnold+press+form" },
+            { "name": "Pike Push-Up", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=pike+push+up+form" }
           ] },
-        { "name": "Walking Lunges", "cat": "Lower", "sets": 3, "reps": "10/leg", "start": "15–20 lb DBs", "url": "https://www.youtube.com/watch?v=_DLIS8SySzs",
+        { "name": "Walking Lunges", "cat": "Lower", "sets": 3, "reps": "10/leg", "start": "15–20 lb DBs", "equip": "dumbbell", "url": "https://www.youtube.com/watch?v=_DLIS8SySzs",
           "alts": [
-            { "name": "Bulgarian Split Squat", "start": "15–20 lb DBs", "url": "https://www.youtube.com/results?search_query=bulgarian+split+squat+form" },
-            { "name": "Reverse Lunges", "start": "15–20 lb DBs", "url": "https://www.youtube.com/results?search_query=dumbbell+reverse+lunge+form" }
+            { "name": "Bulgarian Split Squat", "start": "15–20 lb DBs", "equip": "dumbbell", "url": "https://www.youtube.com/results?search_query=bulgarian+split+squat+form" },
+            { "name": "Reverse Lunges", "start": "15–20 lb DBs", "equip": "dumbbell", "url": "https://www.youtube.com/results?search_query=dumbbell+reverse+lunge+form" },
+            { "name": "Bodyweight Lunges", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=bodyweight+lunge+form" }
           ] },
-        { "name": "Cable Bicep Curl", "cat": "Upper", "sets": 2, "reps": "15", "start": "20–30 lb", "url": "https://www.youtube.com/watch?v=2MUEL4nL6hA",
+        { "name": "Cable Bicep Curl", "cat": "Upper", "sets": 2, "reps": "15", "start": "20–30 lb", "equip": "cable", "url": "https://www.youtube.com/watch?v=2MUEL4nL6hA",
           "alts": [
-            { "name": "Dumbbell Curl", "start": "15–20 lb DBs", "url": "https://www.youtube.com/results?search_query=dumbbell+bicep+curl+form" },
-            { "name": "EZ-Bar Curl", "start": "30–40 lb", "url": "https://www.youtube.com/results?search_query=ez+bar+curl+form" }
+            { "name": "Dumbbell Curl", "start": "15–20 lb DBs", "equip": "dumbbell", "url": "https://www.youtube.com/results?search_query=dumbbell+bicep+curl+form" },
+            { "name": "EZ-Bar Curl", "start": "30–40 lb", "equip": "barbell", "url": "https://www.youtube.com/results?search_query=ez+bar+curl+form" }
           ] },
-        { "name": "Hanging Knee Raise / Cable Crunch", "cat": "Core", "sets": 3, "reps": "15", "start": "Bodyweight", "url": "https://www.youtube.com/watch?v=l7OroezzX9k",
+        { "name": "Hanging Knee Raise / Cable Crunch", "cat": "Core", "sets": 3, "reps": "15", "start": "Bodyweight", "equip": "machine", "url": "https://www.youtube.com/watch?v=l7OroezzX9k",
           "alts": [
-            { "name": "Ab Machine Crunch", "start": "40–60 lb", "url": "https://www.youtube.com/results?search_query=ab+machine+crunch+form" },
-            { "name": "Decline Sit-Up", "start": "Bodyweight", "url": "https://www.youtube.com/results?search_query=decline+sit+up+form" }
+            { "name": "Ab Machine Crunch", "start": "40–60 lb", "equip": "machine", "url": "https://www.youtube.com/results?search_query=ab+machine+crunch+form" },
+            { "name": "Decline Sit-Up", "start": "Bodyweight", "equip": "machine", "url": "https://www.youtube.com/results?search_query=decline+sit+up+form" },
+            { "name": "Lying Leg Raise", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=lying+leg+raise+form" }
           ] }
       ]
     },
@@ -91,35 +103,39 @@
       "plate": "#22C55E",
       "finisher": "10 min intervals (assault bike or treadmill sprints/walk)",
       "exercises": [
-        { "name": "Leg Press", "cat": "Lower", "sets": 3, "reps": "12", "start": "180–230 lb", "url": "https://www.youtube.com/watch?v=K5n2vg3oZa4",
+        { "name": "Leg Press", "cat": "Lower", "sets": 3, "reps": "12", "start": "180–230 lb", "equip": "machine", "url": "https://www.youtube.com/watch?v=K5n2vg3oZa4",
           "alts": [
-            { "name": "Hack Squat", "start": "90–140 lb", "url": "https://www.youtube.com/results?search_query=hack+squat+form" },
-            { "name": "Goblet Squat", "start": "30–35 lb DB", "url": "https://www.youtube.com/watch?v=gm4ln6PO4rc" }
+            { "name": "Hack Squat", "start": "90–140 lb", "equip": "machine", "url": "https://www.youtube.com/results?search_query=hack+squat+form" },
+            { "name": "Goblet Squat", "start": "30–35 lb DB", "equip": "dumbbell", "url": "https://www.youtube.com/watch?v=gm4ln6PO4rc" },
+            { "name": "Bodyweight Squat", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=bodyweight+squat+form" }
           ] },
-        { "name": "Chest Press / DB Bench Press", "cat": "Upper", "sets": 3, "reps": "12", "start": "30–35 lb DBs", "url": "https://www.youtube.com/watch?v=5Y3VZsLb1Ys",
+        { "name": "Chest Press / DB Bench Press", "cat": "Upper", "sets": 3, "reps": "12", "start": "30–35 lb DBs", "equip": "dumbbell", "url": "https://www.youtube.com/watch?v=5Y3VZsLb1Ys",
           "alts": [
-            { "name": "Machine Chest Press", "start": "80–100 lb", "url": "https://www.youtube.com/results?search_query=machine+chest+press+form" },
-            { "name": "Incline Dumbbell Press", "start": "25–30 lb DBs", "url": "https://www.youtube.com/watch?v=awEEyL5zGvU" }
+            { "name": "Machine Chest Press", "start": "80–100 lb", "equip": "machine", "url": "https://www.youtube.com/results?search_query=machine+chest+press+form" },
+            { "name": "Incline Dumbbell Press", "start": "25–30 lb DBs", "equip": "dumbbell", "url": "https://www.youtube.com/watch?v=awEEyL5zGvU" },
+            { "name": "Push-Up", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=push+up+form" }
           ] },
-        { "name": "Seated Cable Row", "cat": "Upper", "sets": 3, "reps": "12", "start": "70–90 lb", "url": "https://www.youtube.com/watch?v=7BkgqzC6WsM",
+        { "name": "Seated Cable Row", "cat": "Upper", "sets": 3, "reps": "12", "start": "70–90 lb", "equip": "cable", "url": "https://www.youtube.com/watch?v=7BkgqzC6WsM",
           "alts": [
-            { "name": "Chest-Supported Dumbbell Row", "start": "30–40 lb DBs", "url": "https://www.youtube.com/results?search_query=chest+supported+dumbbell+row+form" },
-            { "name": "Machine Row", "start": "70–90 lb", "url": "https://www.youtube.com/results?search_query=seated+machine+row+form" }
+            { "name": "Chest-Supported Dumbbell Row", "start": "30–40 lb DBs", "equip": "dumbbell", "url": "https://www.youtube.com/results?search_query=chest+supported+dumbbell+row+form" },
+            { "name": "Machine Row", "start": "70–90 lb", "equip": "machine", "url": "https://www.youtube.com/results?search_query=seated+machine+row+form" },
+            { "name": "Inverted Row", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=inverted+row+form" }
           ] },
-        { "name": "Dumbbell Step-Ups", "cat": "Lower", "sets": 3, "reps": "10/leg", "start": "15–20 lb DBs", "url": "https://www.youtube.com/watch?v=DxUNi119Qzs",
+        { "name": "Dumbbell Step-Ups", "cat": "Lower", "sets": 3, "reps": "10/leg", "start": "15–20 lb DBs", "equip": "dumbbell", "url": "https://www.youtube.com/watch?v=DxUNi119Qzs",
           "alts": [
-            { "name": "Bulgarian Split Squat", "start": "15–20 lb DBs", "url": "https://www.youtube.com/results?search_query=bulgarian+split+squat+form" },
-            { "name": "Leg Extension", "start": "70–90 lb", "url": "https://www.youtube.com/results?search_query=leg+extension+form" }
+            { "name": "Bulgarian Split Squat", "start": "15–20 lb DBs", "equip": "dumbbell", "url": "https://www.youtube.com/results?search_query=bulgarian+split+squat+form" },
+            { "name": "Leg Extension", "start": "70–90 lb", "equip": "machine", "url": "https://www.youtube.com/results?search_query=leg+extension+form" },
+            { "name": "Bodyweight Lunges", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=bodyweight+lunge+form" }
           ] },
-        { "name": "Lateral Raises", "cat": "Upper", "sets": 2, "reps": "15", "start": "8–12 lb DBs", "url": "https://www.youtube.com/watch?v=Y29xKcze8Ik",
+        { "name": "Lateral Raises", "cat": "Upper", "sets": 2, "reps": "15", "start": "8–12 lb DBs", "equip": "dumbbell", "url": "https://www.youtube.com/watch?v=Y29xKcze8Ik",
           "alts": [
-            { "name": "Cable Lateral Raise", "start": "10–15 lb", "url": "https://www.youtube.com/results?search_query=cable+lateral+raise+form" },
-            { "name": "Machine Lateral Raise", "start": "30–40 lb", "url": "https://www.youtube.com/results?search_query=machine+lateral+raise+form" }
+            { "name": "Cable Lateral Raise", "start": "10–15 lb", "equip": "cable", "url": "https://www.youtube.com/results?search_query=cable+lateral+raise+form" },
+            { "name": "Machine Lateral Raise", "start": "30–40 lb", "equip": "machine", "url": "https://www.youtube.com/results?search_query=machine+lateral+raise+form" }
           ] },
-        { "name": "Side Plank", "cat": "Core", "sets": 3, "reps": "20–30 sec/side", "start": "Bodyweight", "url": "https://www.youtube.com/watch?v=Ujf5ELfqI7o",
+        { "name": "Side Plank", "cat": "Core", "sets": 3, "reps": "20–30 sec/side", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/watch?v=Ujf5ELfqI7o",
           "alts": [
-            { "name": "Bird Dog", "start": "Bodyweight", "url": "https://www.youtube.com/results?search_query=bird+dog+exercise+form" },
-            { "name": "Dead Bug", "start": "Bodyweight", "url": "https://www.youtube.com/results?search_query=dead+bug+exercise+form" }
+            { "name": "Bird Dog", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=bird+dog+exercise+form" },
+            { "name": "Dead Bug", "start": "Bodyweight", "equip": "bodyweight", "url": "https://www.youtube.com/results?search_query=dead+bug+exercise+form" }
           ] }
       ]
     }
