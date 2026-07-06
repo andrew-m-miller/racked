@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Scale, Flame, ChevronLeft, ChevronRight, Download } from "lucide-react";
-import { dayForDate } from "./planUtils.js";
+import { dayForDate, localDateKey } from "./planUtils.js";
+import { useAppState } from "./AppState.jsx";
 import { LineChart } from "./charts.jsx";
 import RecapSection from "./RecapSection.jsx";
 import { logsToCSV, weighInsToCSV, buildExportJSON } from "./dataExport.js";
@@ -401,7 +402,10 @@ function ExportSection({ days, logs, weighIns, today, meta }) {
   );
 }
 
-export default function ProgressView({ days, logs, weighIns, today, meta, onAddWeighIn, onApplyPlanChange }) {
+export default function ProgressView({ onApplyPlanChange }) {
+  const { days, logs, weighIns, planMeta: meta, logWeighIn } = useAppState();
+  const today = localDateKey();
+  const onAddWeighIn = (weightLb) => logWeighIn(today, weightLb);
   return (
     <div>
       <BodyweightSection weighIns={weighIns} today={today} onAddWeighIn={onAddWeighIn} />
