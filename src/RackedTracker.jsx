@@ -5,6 +5,7 @@ import { SEED_DAYS, SEED_META, slug, exMetric, metricUnit, dayForDate, finisherS
 import { useAppState } from "./AppState.jsx";
 import { useHashRoute } from "./useHashRoute.js";
 import { useAutoCoach } from "./useAutoCoach.js";
+import { pushEnabled, scheduleRestPush } from "./push.js";
 import DayTabs from "./DayTabs.jsx";
 import ExerciseCard from "./ExerciseCard.jsx";
 import FinisherCard from "./FinisherCard.jsx";
@@ -150,6 +151,10 @@ export default function RackedTracker({ session }) {
       return h.filter((x) => x.date === today).length >= e.sets;
     });
     setRestEndsAt(liftsDoneNow ? null : Date.now() + REST_SECONDS * 1000);
+    // Backgrounded phones freeze the in-page timer (especially iOS PWAs), so
+    // mirror it with a server-scheduled push; the service worker drops it if
+    // the app is still on screen.
+    if (!liftsDoneNow && pushEnabled()) scheduleRestPush(REST_SECONDS);
   };
 
   const handleLogFinisher = (minutes, mode) => {
@@ -496,7 +501,12 @@ export default function RackedTracker({ session }) {
       {restEndsAt != null && (
         <RestTimer
           endsAt={restEndsAt}
-          onExtend={() => setRestEndsAt((t) => t + 30000)}
+          onExtend={() => {
+            // Re-mirror the extension server-side; the same notification tag
+            // collapses the earlier push if it lands first.
+            if (pushEnabled()) scheduleRestPush(Math.max(1, Math.round((restEndsAt + 30000 - Date.now()) / 1000)));
+            setRestEndsAt((t) => t + 30000);
+          }}
           onSkip={() => setRestEndsAt(null)}
         />
       )}

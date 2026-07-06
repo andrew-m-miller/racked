@@ -35,6 +35,9 @@ export default defineConfig({
         // (cross-origin, no route here) — offline writes go through the sync
         // queue in storage.js instead.
         globPatterns: ["**/*.{js,css,html,png,svg,ico}"],
+        // generateSW owns sw.js, so the push/notificationclick handlers ride
+        // in via importScripts (public/push-sw.js).
+        importScripts: ["push-sw.js"],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,

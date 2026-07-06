@@ -4,6 +4,7 @@ import { dayForDate, localDateKey } from "./planUtils.js";
 import { useAppState } from "./AppState.jsx";
 import { LineChart } from "./charts.jsx";
 import CoachSection from "./CoachSection.jsx";
+import HealthSection from "./HealthSection.jsx";
 import { logsToCSV, weighInsToCSV, buildExportJSON } from "./dataExport.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -420,6 +421,7 @@ export default function ProgressView({ onApplyPlanChange }) {
         onRecordRun={recordCoachRun}
         onApplyPlanChange={onApplyPlanChange}
       />
+      <HealthSection />
       <ExportSection days={days} logs={logs} weighIns={weighIns} today={today} meta={meta} />
     </div>
   );

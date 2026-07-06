@@ -220,6 +220,115 @@ that just finished on your first open of a new week — the client-side
 equivalent of the roadmap's Sunday-night cron, with no extra infrastructure.
 It's per-device (localStorage) and off by default.
 
+### Phase 10 — health & device integration
+
+Phase 10 connects the installed PWA to the phone: an Apple Health / Health
+Connect bridge (weigh-ins in, workouts out, via an Apple Shortcut — web apps
+have no HealthKit API) and web push notifications (a rest-timer ping when the
+phone is locked, plus a weekly check-in nudge). Everything is opt-in and fails
+soft: without the tables and secrets below, the new Progress sections just
+show setup hints.
+
+**1. Tables** — run in the SQL Editor:
+
+```sql
+-- Per-user token that authenticates the Shortcuts health bridge; minted
+-- in-app (Progress → Health sync), resolved back to a user by the
+-- health-sync edge function via the service role.
+create table sync_tokens (
+  user_id    uuid primary key default auth.uid(),
+  token      text not null unique,
+  created_at timestamptz default now()
+);
+alter table sync_tokens enable row level security;
+create policy "Own rows" on sync_tokens for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- One row per device/browser push subscription (the endpoint URL is
+-- globally unique). push-send prunes rows whose endpoint the push service
+-- reports gone (410).
+create table push_subscriptions (
+  endpoint   text primary key,
+  user_id    uuid not null default auth.uid(),
+  keys       jsonb not null,
+  created_at timestamptz default now()
+);
+alter table push_subscriptions enable row level security;
+create policy "Own rows" on push_subscriptions for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+
+Without `sync_tokens`, the Health sync setup button shows an error pointing
+here; without `push_subscriptions`, enabling notifications does the same.
+Nothing else is affected.
+
+**2. VAPID keys** (the identity push services require):
+
+```bash
+node scripts/generate-vapid-keys.mjs
+```
+
+- Put the printed `VITE_VAPID_PUBLIC_KEY=...` line in `.env`, and add the same
+  value as a GitHub Actions repository secret so the deploy build gets it
+  (the Notifications section shows "not configured" without it).
+- Set the printed `VAPID_KEYS` JSON as an edge-function secret:
+  `npx supabase secrets set VAPID_KEYS='{"publicKey":...}'` — optionally also
+  `VAPID_CONTACT=mailto:you@example.com`.
+
+Both halves come from one keypair: regenerate them together, which
+invalidates existing subscriptions (users just re-enable).
+
+**3. Edge functions:**
+
+```bash
+npx supabase functions deploy push-send --project-ref fugrbmkhuhphskitpvzc
+npx supabase functions deploy health-sync --no-verify-jwt --project-ref fugrbmkhuhphskitpvzc
+```
+
+`--no-verify-jwt` on `health-sync` is deliberate: Apple Shortcuts can't hold a
+Supabase session, so that function authenticates with the per-user sync token
+instead (every request without a valid token gets a 401, and all reads/writes
+are filtered to the token's owner). `push-send` keeps JWT verification on.
+
+**4. Weekly nudge cron (optional):** the Sunday-evening "check-in is ready"
+push. Enable the `pg_cron` and `pg_net` extensions (Dashboard → Database →
+Extensions), put the service role key in Vault, and schedule:
+
+```sql
+select vault.create_secret('<service-role-key>', 'service_role_key');
+
+select cron.schedule(
+  'racked-weekly-nudge',
+  '0 22 * * 0',  -- Sunday 22:00 UTC ≈ Sunday evening US
+  $$
+  select net.http_post(
+    url     := 'https://fugrbmkhuhphskitpvzc.supabase.co/functions/v1/push-send',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'service_role_key')
+    ),
+    body    := '{"type":"weekly"}'::jsonb
+  );
+  $$
+);
+```
+
+`push-send` only honors `{"type":"weekly"}` from the service role, so the
+broadcast can't be triggered from the client bundle.
+
+**Using it** (both live under Progress):
+- **Notifications** — enable from the installed app (iOS only allows push for
+  home-screen PWAs; the section says so when you're in a Safari tab). After
+  that, a rest timer finishing while the phone is locked pings you, and the
+  cron nudges you when a new week's check-in is waiting. The service worker
+  drops pushes while the app is on screen, so nothing double-fires.
+- **Health sync** — "Set up health sync" mints a private tokened URL; the
+  collapsible "Shortcut setup" panel walks through the two Shortcuts:
+  POST your latest Health weigh-in in (re-sends of the same date+weight are
+  ignored, so automations are safe to re-run), and GET today's finished
+  session out for a Log Workout action (`?since=` widens the window for a
+  backfill). Revoking mints nothing new — the old URL just stops working.
+
 ### 2. Environment variables
 
 Copy `.env.example` to `.env` and fill in your credentials:
@@ -288,4 +397,10 @@ Live at `https://andrew-m-miller.github.io/racked/`.
   first open of a new one
 - Raw recap fallback: the same weekly summary as a paste-ready block for a
   coaching chat in the Claude app — works with zero backend setup
+- Web push notifications (opt-in): a ping when the rest timer ends while the
+  phone is locked or the app is backgrounded, and a weekly nudge when a new
+  check-in is ready — suppressed whenever the app is already on screen
+- Apple Health / Health Connect bridge (opt-in): a private tokened URL that a
+  Shortcut automation POSTs weigh-ins to and GETs finished workouts from, so
+  bodyweight flows in without typing and training shows up in your rings
 - Data persisted in Supabase Postgres, so your log follows you across devices
