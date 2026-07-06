@@ -1,14 +1,17 @@
+import { scopedKey } from "./storageScope.js";
+
 // Offline sync queue: writes that fail because the network is down are parked
 // in localStorage and replayed, in order, once the connection returns. Set
 // logging at the gym keeps working through dead-zones — the optimistic UI
-// update stands and the row uploads later.
+// update stands and the row uploads later. The key is scoped per user
+// (storageScope.js) so a queued write can never replay under another account.
 const QUEUE_KEY = "racked-pending-v1";
 
 const listeners = new Set();
 
 function read() {
   try {
-    return JSON.parse(localStorage.getItem(QUEUE_KEY)) || [];
+    return JSON.parse(localStorage.getItem(scopedKey(QUEUE_KEY))) || [];
   } catch {
     return [];
   }
@@ -16,7 +19,7 @@ function read() {
 
 function write(ops) {
   try {
-    localStorage.setItem(QUEUE_KEY, JSON.stringify(ops));
+    localStorage.setItem(scopedKey(QUEUE_KEY), JSON.stringify(ops));
   } catch {
     // localStorage full/unavailable — the op still ran optimistically in the UI
   }

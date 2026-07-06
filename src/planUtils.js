@@ -54,25 +54,74 @@ export function finisherSlug(dayId) {
   return `finisher-${String(dayId).toLowerCase()}`;
 }
 
-// Which plan day was trained on a given date. Exercises shared across days
-// (e.g. Seated Cable Row on A and C) make a single-slug lookup ambiguous, so
-// the day is chosen by majority vote over that date's entries. Substitutes
-// count too, via each exercise's alts, as does the day's finisher.
-export function dayForDate(days, logs, date) {
-  const votes = {};
+// Which plan day was trained on each logged date, computed in one pass over
+// the logs. Exercises shared across days (e.g. Seated Cable Row on A and C)
+// make a single-slug lookup ambiguous, so each date's day is chosen by
+// majority vote over its entries (ties go to the earlier day in plan order,
+// matching the old per-date vote). Substitutes count too, via each exercise's
+// alts, as does the day's finisher. Callers that ask about many dates (the
+// consistency calendar, the recap) should build this once instead of calling
+// dayForDate per date — the old per-date scan grew as dates × total entries.
+export function buildDayIndex(days, logs) {
+  const slugDays = new Map(); // history slug -> every day id it votes for
   for (const d of days) {
-    for (const ex of d.exercises) {
-      const names = [ex.name, ...(ex.alts || []).map((a) => a.name)];
-      for (const name of names) {
-        for (const e of logs[slug(name)] || []) {
-          if (e.date === date) votes[d.id] = (votes[d.id] || 0) + 1;
-        }
-      }
-    }
-    for (const e of logs[finisherSlug(d.id)] || []) {
-      if (e.date === date) votes[d.id] = (votes[d.id] || 0) + 1;
+    const names = d.exercises.flatMap((ex) => [ex.name, ...(ex.alts || []).map((a) => a.name)]);
+    for (const key of [...names.map(slug), finisherSlug(d.id)]) {
+      if (!slugDays.has(key)) slugDays.set(key, new Set());
+      slugDays.get(key).add(d.id);
     }
   }
-  const winner = Object.keys(votes).sort((a, b) => votes[b] - votes[a])[0];
-  return winner || null;
+
+  const votes = new Map(); // date -> Map(dayId -> count)
+  for (const [key, entries] of Object.entries(logs)) {
+    const ids = slugDays.get(key);
+    if (!ids) continue;
+    for (const e of entries) {
+      let v = votes.get(e.date);
+      if (!v) votes.set(e.date, (v = new Map()));
+      for (const id of ids) v.set(id, (v.get(id) || 0) + 1);
+    }
+  }
+
+  const index = new Map();
+  for (const [date, v] of votes) {
+    let winner = null;
+    let best = 0;
+    for (const d of days) {
+      const n = v.get(d.id) || 0;
+      if (n > best) {
+        winner = d.id;
+        best = n;
+      }
+    }
+    index.set(date, winner);
+  }
+  return index;
+}
+
+export function dayForDate(days, logs, date) {
+  return buildDayIndex(days, logs).get(date) ?? null;
+}
+
+// Apply a coach-suggested tweak ({exercise, sets, reps}, nulls = leave
+// unchanged) to the plan. Matches by slug across all days, primaries only —
+// the same matching rule as coachUtils.inversePlanChange, which computes the
+// revert. Returns the updated days, or null when the exercise isn't in the
+// plan (the caller surfaces that instead of showing "Applied" for a no-op).
+export function applyPlanChange(days, change) {
+  const key = slug(change.exercise);
+  let matched = false;
+  const next = days.map((d) => ({
+    ...d,
+    exercises: d.exercises.map((ex) => {
+      if (slug(ex.name) !== key) return ex;
+      matched = true;
+      return {
+        ...ex,
+        ...(change.sets != null ? { sets: Number(change.sets) } : {}),
+        ...(change.reps != null ? { reps: String(change.reps) } : {}),
+      };
+    }),
+  }));
+  return matched ? next : null;
 }

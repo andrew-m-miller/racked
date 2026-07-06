@@ -12,11 +12,16 @@
 //              npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 //
 // JWT verification stays ON (the default), so only signed-in app users can
-// spend API credits.
+// spend API credits — plus a per-user daily cap (../_shared/quota.ts), so a
+// shared deployment can't be run up by one account. Deploying via the
+// dashboard editor needs the _shared/quota.ts file added alongside; the CLI
+// bundles it automatically.
 
 import Anthropic from "npm:@anthropic-ai/sdk";
 import { z } from "npm:zod";
 import { zodOutputFormat } from "npm:@anthropic-ai/sdk/helpers/zod";
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { jwtSub, underDailyCap } from "../_shared/quota.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -67,13 +72,30 @@ Deno.serve(async (req) => {
     if (!recap || typeof recap !== "string") {
       return Response.json({ error: "missing recap" }, { status: 400, headers: CORS });
     }
+    // A real recap is a few KB; anything bigger is input-token amplification.
+    if (recap.length > 20000) {
+      return Response.json({ error: "recap too large" }, { status: 400, headers: CORS });
+    }
+
+    const userId = jwtSub(req);
+    if (!userId) {
+      return Response.json({ error: "sign in required" }, { status: 401, headers: CORS });
+    }
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    // 200 with {error} rather than 429: supabase-js buries non-2xx bodies, and
+    // the client already surfaces data.error verbatim.
+    if (!(await underDailyCap(admin, userId, "coach", 10))) {
+      return Response.json({ error: "Daily coach limit reached — try again tomorrow." }, { headers: CORS });
+    }
 
     const planText = (plan?.days || [])
+      .slice(0, 7)
       .map(
         (d: { name: string; exercises: { name: string; sets: number; reps: string }[] }) =>
           `${d.name}: ${d.exercises.map((e) => `${e.name} (${e.sets}×${e.reps})`).join(", ")}`
       )
-      .join("\n");
+      .join("\n")
+      .slice(0, 8000);
 
     const client = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") });
     const response = await client.messages.parse({

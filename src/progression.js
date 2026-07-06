@@ -72,15 +72,19 @@ export function computeSuggestion(ex, history) {
 
   const inc = INCREMENT[ex.cat] || 5;
 
-  // consecutive misses, most recent first; a hit that was rated "brutal"
-  // counts as a half-miss toward the deload trigger. Only weighted lifts
-  // deload, so this scan lives below the timed/bodyweight early returns.
+  // consecutive missed *sessions*, most recent first — each session judged on
+  // its last set (the same set the hit/target check above reads), so a normal
+  // mid-workout fatigue miss can't trigger a deload on its own. A hit rated
+  // "brutal" counts as a half-miss. Only weighted lifts deload, so this scan
+  // lives below the timed/bodyweight early returns.
+  const lastSetByDate = new Map();
+  for (const e of history) lastSetByDate.set(e.date, e);
+  const sessions = [...lastSetByDate.values()];
   let missScore = 0;
-  for (let i = history.length - 1; i >= 0; i--) {
-    const v = parseFloat(history[i].reps) || 0;
-    const t = target || 0;
-    if (v < t) missScore += 1;
-    else if (Number(history[i].effort) === 1) missScore += 0.5;
+  for (let i = sessions.length - 1; i >= 0; i--) {
+    const v = parseFloat(sessions[i].reps) || 0;
+    if (v < (target || 0)) missScore += 1;
+    else if (Number(sessions[i].effort) === 1) missScore += 0.5;
     else break;
   }
 

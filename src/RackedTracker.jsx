@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Dumbbell, RotateCcw, BarChart3, Pencil, CloudOff, LogOut } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
-import { SEED_DAYS, SEED_META, slug, exMetric, metricUnit, dayForDate, finisherSlug, localDateKey } from "./planUtils.js";
+import { SEED_DAYS, SEED_META, slug, exMetric, metricUnit, dayForDate, finisherSlug, localDateKey, applyPlanChange } from "./planUtils.js";
 import { useAppState } from "./AppState.jsx";
 import { useHashRoute } from "./useHashRoute.js";
 import { useAutoCoach } from "./useAutoCoach.js";
 import { pushEnabled, scheduleRestPush } from "./push.js";
+import { FONTS_IMPORT } from "./ui.jsx";
 import DayTabs from "./DayTabs.jsx";
 import ExerciseCard from "./ExerciseCard.jsx";
 import FinisherCard from "./FinisherCard.jsx";
@@ -45,8 +46,7 @@ function pickInitialDay(days, logs, today) {
 // the hash route; what lives here is the workout-session state (active day,
 // rest timer, swaps, PR toast) and the handlers that tie them together.
 export default function RackedTracker({ session }) {
-  const { logs, weighIns, days, planMeta, loaded, isNewUser, saveError, pendingSync, logEntry, logWeighIn, saveLivePlan, clearLogs } =
-    useAppState();
+  const { logs, days, planMeta, loaded, isNewUser, saveError, pendingSync, logEntry, saveLivePlan, clearLogs } = useAppState();
   const [route, navigate] = useHashRoute();
   const view = route.view; // "workout" | "progress" | "edit" | "onboard"
   useAutoCoach(); // opt-in weekly check-in: pre-runs the coach for the week that just ended
@@ -170,26 +170,13 @@ export default function RackedTracker({ session }) {
     if (!nextDays.some((d) => d.id === activeDay)) setActiveDay(nextDays[0]?.id);
   };
 
-  // Apply a coach-suggested tweak ({exercise, sets, reps}, nulls = unchanged)
-  // to the live plan. Matches by slug across all days, primaries only. Rejects
-  // when nothing matches (the coach is told to only name plan exercises, but a
-  // silent no-op here would show "Applied" for an edit that never happened).
+  // Apply a coach-suggested tweak to the live plan (planUtils.applyPlanChange).
+  // Rejects when nothing matches (the coach is told to only name plan
+  // exercises, but a silent no-op here would show "Applied" for an edit that
+  // never happened).
   const handleApplyPlanChange = (change) => {
-    const key = slug(change.exercise);
-    let matched = false;
-    const nextDays = days.map((d) => ({
-      ...d,
-      exercises: d.exercises.map((ex) => {
-        if (slug(ex.name) !== key) return ex;
-        matched = true;
-        return {
-          ...ex,
-          ...(change.sets != null ? { sets: Number(change.sets) } : {}),
-          ...(change.reps != null ? { reps: String(change.reps) } : {}),
-        };
-      }),
-    }));
-    if (!matched) return Promise.reject(new Error(`"${change.exercise}" isn't in the current plan`));
+    const nextDays = applyPlanChange(days, change);
+    if (!nextDays) return Promise.reject(new Error(`"${change.exercise}" isn't in the current plan`));
     return handleSavePlan(nextDays);
   };
 
@@ -238,7 +225,7 @@ export default function RackedTracker({ session }) {
       }}
     >
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
+        ${FONTS_IMPORT}
         input:focus { border-color: #6B7280 !important; }
         @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
       `}</style>

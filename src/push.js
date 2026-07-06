@@ -1,6 +1,7 @@
 import { supabase } from "./supabaseClient.js";
 import { urlBase64ToUint8Array, pushSupportState } from "./pushUtils.js";
 import { savePushSubscription, deletePushSubscription } from "./storage.js";
+import { scopedKey } from "./storageScope.js";
 
 // Browser wiring for web push (Phase 10). Kept out of the view components so
 // nothing under src/*.jsx talks to the Supabase client directly — same
@@ -18,7 +19,7 @@ const PUSH_FLAG = "racked-push-on";
 
 export function pushEnabled() {
   try {
-    return localStorage.getItem(PUSH_FLAG) === "1";
+    return localStorage.getItem(scopedKey(PUSH_FLAG)) === "1";
   } catch {
     return false;
   }
@@ -26,8 +27,8 @@ export function pushEnabled() {
 
 function setPushFlag(on) {
   try {
-    if (on) localStorage.setItem(PUSH_FLAG, "1");
-    else localStorage.removeItem(PUSH_FLAG);
+    if (on) localStorage.setItem(scopedKey(PUSH_FLAG), "1");
+    else localStorage.removeItem(scopedKey(PUSH_FLAG));
   } catch {
     // storage blocked — pushes still work, rest-timer scheduling just won't
   }

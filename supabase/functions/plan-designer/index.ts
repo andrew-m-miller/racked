@@ -13,11 +13,14 @@
 //   cli:       npx supabase functions deploy plan-designer --project-ref <ref>
 //
 // JWT verification stays ON (the default), so only signed-in app users can
-// spend API credits.
+// spend API credits — plus a per-user daily cap (../_shared/quota.ts); this
+// is the priciest function per call, so it gets the tightest one.
 
 import Anthropic from "npm:@anthropic-ai/sdk";
 import { z } from "npm:zod";
 import { zodOutputFormat } from "npm:@anthropic-ai/sdk/helpers/zod";
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { jwtSub, underDailyCap } from "../_shared/quota.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -112,6 +115,17 @@ Deno.serve(async (req) => {
     if (!EQUIPMENT.includes(equipment)) {
       return Response.json({ error: "invalid equipment" }, { status: 400, headers: CORS });
     }
+
+    const userId = jwtSub(req);
+    if (!userId) {
+      return Response.json({ error: "sign in required" }, { status: 401, headers: CORS });
+    }
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    // 200 with {error}: the client renders data.error in its error box.
+    if (!(await underDailyCap(admin, userId, "plan-designer", 10))) {
+      return Response.json({ error: "Daily plan-designer limit reached — try again tomorrow." }, { headers: CORS });
+    }
+
     const daysPerWeek = Math.min(5, Math.max(2, Number(body.daysPerWeek) || 3));
     const constraints = typeof body.constraints === "string" ? body.constraints.slice(0, 500) : "";
     const tweak = typeof body.tweak === "string" ? body.tweak.slice(0, 300) : "";

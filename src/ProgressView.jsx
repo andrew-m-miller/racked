@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from "react";
 import { Scale, Flame, ChevronLeft, ChevronRight, Download } from "lucide-react";
-import { dayForDate, localDateKey } from "./planUtils.js";
+import { buildDayIndex, localDateKey } from "./planUtils.js";
 import { useAppState } from "./AppState.jsx";
+import { StatBlock, SectionTitle, ghostBtn } from "./ui.jsx";
 import { LineChart } from "./charts.jsx";
 import CoachSection from "./CoachSection.jsx";
 import HealthSection from "./HealthSection.jsx";
@@ -72,39 +73,7 @@ function computeStreaks(sessionDates, today, target) {
   return { current, best: Math.max(best, current) };
 }
 
-function StatBlock({ label, value, accent }) {
-  return (
-    <div style={{ flex: 1, background: "#1B1E22", border: "1px solid #2A2E33", borderRadius: 10, padding: "12px 14px" }}>
-      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 20, fontWeight: 600, color: accent || "#F5F6F7" }}>
-        {value}
-      </div>
-      <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11.5, color: "#9AA1AC", marginTop: 2 }}>{label}</div>
-    </div>
-  );
-}
-
-function SectionTitle({ icon, children }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "22px 0 10px" }}>
-      {icon}
-      <h2
-        style={{
-          fontFamily: "'Oswald', sans-serif",
-          fontWeight: 600,
-          fontSize: 16,
-          color: "#F5F6F7",
-          margin: 0,
-          textTransform: "uppercase",
-          letterSpacing: "0.02em",
-        }}
-      >
-        {children}
-      </h2>
-    </div>
-  );
-}
-
-function BodyweightSection({ weighIns, today, onAddWeighIn }) {
+function BodyweightSection({ weighIns, onAddWeighIn }) {
   const [input, setInput] = useState("");
 
   // One point per date (last weigh-in wins) keeps the chart honest.
@@ -113,7 +82,7 @@ function BodyweightSection({ weighIns, today, onAddWeighIn }) {
   const points = [...byDate.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
   const values = points.map(([, v]) => v);
 
-  const smoothed = points.map(([date], i) => {
+  const smoothed = points.map(([date]) => {
     const t = toDate(date).getTime();
     const window = points.filter(([d2]) => {
       const t2 = toDate(d2).getTime();
@@ -214,16 +183,16 @@ function CalendarSection({ days, logs, today, meta }) {
   const [offset, setOffset] = useState(0); // months back from current
   const plate = Object.fromEntries(days.map((d) => [d.id, d.plate]));
 
-  // Map each training date to the plan day that was performed. dayForDate is a
-  // full plan×logs scan, so memoize it — month navigation (offset) must not
-  // trigger a recompute.
+  // Map each training date to the plan day that was performed — one pass via
+  // buildDayIndex, memoized so month navigation (offset) can't recompute it.
+  // `dates` is collected separately from the index: a date whose only entries
+  // are orphaned slugs (renamed/dropped exercises) still counts as a workout,
+  // it just gets no day color.
   const { dayByDate, sessions, streaks } = useMemo(() => {
     const dates = new Set();
     for (const entries of Object.values(logs)) for (const e of entries) dates.add(e.date);
-    const byDate = {};
-    for (const d of dates) byDate[d] = dayForDate(days, logs, d);
     const target = meta?.daysPerWeek ?? days.length;
-    return { dayByDate: byDate, sessions: [...dates], streaks: computeStreaks([...dates], today, target) };
+    return { dayByDate: buildDayIndex(days, logs), sessions: [...dates], streaks: computeStreaks([...dates], today, target) };
   }, [days, logs, today, meta]);
 
   const target = meta?.daysPerWeek ?? days.length;
@@ -292,7 +261,7 @@ function CalendarSection({ days, logs, today, meta }) {
           {cells.map((d, i) => {
             if (d === null) return <div key={`pad-${i}`} />;
             const key = toKey(new Date(month.getFullYear(), month.getMonth(), d));
-            const dayId = dayByDate[key];
+            const dayId = dayByDate.get(key);
             const fill = dayId ? plate[dayId] : null;
             const isToday = key === today;
             return (
@@ -346,20 +315,7 @@ function downloadFile(filename, text, type) {
 // One-tap backup of logs + weigh-ins + plan. All from the same in-memory
 // state the views render (loaded through src/storage.js) — no extra fetch.
 function ExportSection({ days, logs, weighIns, today, meta }) {
-  const buttonStyle = {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    background: "#1B1E22",
-    border: "1px solid #2A2E33",
-    borderRadius: 8,
-    color: "#9AA1AC",
-    cursor: "pointer",
-    padding: "8px 12px",
-    fontFamily: "'Inter', sans-serif",
-    fontSize: 12.5,
-    fontWeight: 500,
-  };
+  const buttonStyle = ghostBtn;
 
   return (
     <div>
@@ -409,7 +365,7 @@ export default function ProgressView({ onApplyPlanChange }) {
   const onAddWeighIn = (weightLb) => logWeighIn(today, weightLb);
   return (
     <div>
-      <BodyweightSection weighIns={weighIns} today={today} onAddWeighIn={onAddWeighIn} />
+      <BodyweightSection weighIns={weighIns} onAddWeighIn={onAddWeighIn} />
       <CalendarSection days={days} logs={logs} today={today} meta={meta} />
       <CoachSection
         days={days}

@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from "react";
 import { MessageSquareText, ClipboardCopy, Check, Sparkles, RefreshCw, ChevronDown, ChevronUp, Undo2 } from "lucide-react";
 import { buildWeeklyRecap, weekStart } from "./recap.js";
-import { requestCoachReview } from "./coach.js";
+import { requestCoachReview, backendErrorMessage } from "./coach.js";
 import { inversePlanChange, weekLabel } from "./coachUtils.js";
 import { autoCoachEnabled, setAutoCoachEnabled } from "./useAutoCoach.js";
+import { FONT_UI as FONT, copyText } from "./ui.jsx";
 
 // Phase 9: the two coaching surfaces converged. The coach's narrative +
 // suggestions are the primary weekly view (cached per week in coach_runs, so
@@ -11,7 +12,6 @@ import { autoCoachEnabled, setAutoCoachEnabled } from "./useAutoCoach.js";
 // to a "raw recap" fallback below it. Suggestions apply through
 // onApplyPlanChange with a persisted applied/undo state, and past weeks stay
 // readable as history.
-const FONT = "'Inter', sans-serif";
 
 export default function CoachSection({ days, logs, weighIns, today, meta, coachRuns, onRecordRun, onApplyPlanChange }) {
   const [copied, setCopied] = useState(false);
@@ -37,10 +37,7 @@ export default function CoachSection({ days, logs, weighIns, today, meta, coachR
       onRecordRun({ week_start: thisWeek, review, applied: {} });
       setCoach({ state: "idle" });
     } catch (err) {
-      const msg = /not found|404|Failed to send/i.test(String(err?.message))
-        ? "Coach backend isn't deployed yet — see the README for the one-time Edge Function setup."
-        : String(err?.message || "Something went wrong — try again.");
-      setCoach({ state: "error", message: msg });
+      setCoach({ state: "error", message: backendErrorMessage(err, "Coach") });
     }
   };
 
@@ -75,19 +72,7 @@ export default function CoachSection({ days, logs, weighIns, today, meta, coachR
   };
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(recap);
-    } catch {
-      // clipboard API blocked (old browser / non-secure context) — textarea fallback
-      const ta = document.createElement("textarea");
-      ta.value = recap;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-    }
+    await copyText(recap);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -132,9 +117,11 @@ export default function CoachSection({ days, logs, weighIns, today, meta, coachR
             )}
             {s.plan_change && interactive && (
               <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                {/* The whole group disables while any apply/undo is in flight,
+                    so a second tap can't record against a stale `applied` map. */}
                 <button
                   type="button"
-                  disabled={isApplied || applying === i}
+                  disabled={isApplied || applying != null}
                   onClick={() => apply(i, s.plan_change)}
                   style={{
                     display: "flex",
@@ -163,7 +150,7 @@ export default function CoachSection({ days, logs, weighIns, today, meta, coachR
                 {isApplied && (
                   <button
                     type="button"
-                    disabled={applying === i}
+                    disabled={applying != null}
                     onClick={() => undo(i)}
                     style={{
                       display: "flex",

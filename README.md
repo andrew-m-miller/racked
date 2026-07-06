@@ -5,6 +5,128 @@ plan designer.
 
 ## Setup
 
+### Fresh Supabase project — one-shot schema
+
+Setting up a brand-new instance? Run this single block in the SQL Editor and
+skip the numbered/phase sections below — those are the original deployment's
+migration history (kept because they document the fail-soft rollout behavior
+of each change), and they assume you're upgrading in order with existing data.
+
+```sql
+-- One row per logged set. `weight` doubles as seconds-held for timed core
+-- holds; `effort` is -1/0/1/null; `note` holds the finisher machine/mode.
+create table logs (
+  id             bigint generated always as identity primary key,
+  exercise_slug  text not null,
+  date           date not null,
+  weight         numeric,
+  reps           numeric,
+  effort         smallint,
+  note           text,
+  user_id        uuid default auth.uid(),
+  created_at     timestamptz default now()
+);
+alter table logs enable row level security;
+create policy "Own rows" on logs for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Bodyweight tracking.
+create table weigh_ins (
+  id         bigint generated always as identity primary key,
+  date       date not null,
+  weight_lb  numeric not null,
+  user_id    uuid default auth.uid(),
+  created_at timestamptz default now()
+);
+alter table weigh_ins enable row level security;
+create policy "Own rows" on weigh_ins for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- One editable plan per user ({meta, days} jsonb); exercises.json is the seed.
+create table plan (
+  user_id    uuid primary key default auth.uid(),
+  data       jsonb not null,
+  updated_at timestamptz default now()
+);
+alter table plan enable row level security;
+create policy "Own rows" on plan for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Shared cache of found tutorial videos. RLS on with no policies:
+-- only the find-videos edge function (service role) touches it.
+create table video_links (
+  slug       text primary key,
+  url        text not null,
+  title      text,
+  created_at timestamptz default now()
+);
+alter table video_links enable row level security;
+
+-- One cached coach review per (user, week); `applied` maps suggestion
+-- index -> {inverse} so one-tap Apply has a matching Undo across reloads.
+create table coach_runs (
+  user_id    uuid not null default auth.uid(),
+  week_start date not null,
+  review     jsonb not null,
+  applied    jsonb not null default '{}'::jsonb,
+  updated_at timestamptz default now(),
+  primary key (user_id, week_start)
+);
+alter table coach_runs enable row level security;
+create policy "Own rows" on coach_runs for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Per-user token for the Apple Shortcuts health bridge.
+create table sync_tokens (
+  user_id    uuid primary key default auth.uid(),
+  token      text not null unique,
+  created_at timestamptz default now()
+);
+alter table sync_tokens enable row level security;
+create policy "Own rows" on sync_tokens for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- One row per device/browser push subscription.
+create table push_subscriptions (
+  endpoint   text primary key,
+  user_id    uuid not null default auth.uid(),
+  keys       jsonb not null,
+  created_at timestamptz default now()
+);
+alter table push_subscriptions enable row level security;
+create policy "Own rows" on push_subscriptions for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Per-user daily call counters for the AI/push edge functions (Phase 11).
+-- RLS with no policies + revoked RPC: only the service role touches these.
+create table fn_usage (
+  user_id uuid not null,
+  fn      text not null,
+  day     date not null default (now() at time zone 'utc')::date,
+  count   integer not null default 1,
+  primary key (user_id, fn, day)
+);
+alter table fn_usage enable row level security;
+
+create or replace function bump_fn_usage(p_user uuid, p_fn text, p_cap int)
+returns boolean
+language sql
+as $$
+  insert into fn_usage (user_id, fn, count)
+  values (p_user, p_fn, 1)
+  on conflict (user_id, fn, day)
+  do update set count = fn_usage.count + 1
+  returning count <= p_cap;
+$$;
+revoke execute on function bump_fn_usage(uuid, text, int) from public, anon, authenticated;
+grant execute on function bump_fn_usage(uuid, text, int) to service_role;
+```
+
+Then: configure auth URLs (Phase 4 step 1 below), deploy the edge functions
+(AI coach + Phase 5 + Phase 10 sections), and set the secrets each section
+names. For a shared instance, also see "Phase 11 — sharing hardening" for
+invite-only sign-ups.
+
 ### 1. Supabase — create the table
 
 In your Supabase project, open the **SQL Editor** and run:
@@ -328,6 +450,72 @@ broadcast can't be triggered from the client bundle.
   ignored, so automations are safe to re-run), and GET today's finished
   session out for a Log Workout action (`?since=` widens the window for a
   backfill). Revoking mints nothing new — the old URL just stops working.
+
+### Phase 11 — sharing hardening (quotas + invite-only)
+
+Phase 11 readies the deployment for more than one person: per-user daily
+caps on the functions that spend money, and invite-only sign-ups. Everything
+fails soft — without the table below the caps just don't enforce (the
+functions log the failed check and allow the call).
+
+**1. Quota table + counter RPC** — run in the SQL Editor:
+
+```sql
+-- Per-user daily call counters for the AI/push edge functions.
+-- RLS with no policies + revoked RPC: only the service role touches these.
+create table fn_usage (
+  user_id uuid not null,
+  fn      text not null,
+  day     date not null default (now() at time zone 'utc')::date,
+  count   integer not null default 1,
+  primary key (user_id, fn, day)
+);
+alter table fn_usage enable row level security;
+
+create or replace function bump_fn_usage(p_user uuid, p_fn text, p_cap int)
+returns boolean
+language sql
+as $$
+  insert into fn_usage (user_id, fn, count)
+  values (p_user, p_fn, 1)
+  on conflict (user_id, fn, day)
+  do update set count = fn_usage.count + 1
+  returning count <= p_cap;
+$$;
+-- Callers could otherwise burn other users' quotas through PostgREST.
+revoke execute on function bump_fn_usage(uuid, text, int) from public, anon, authenticated;
+grant execute on function bump_fn_usage(uuid, text, int) to service_role;
+```
+
+**2. Redeploy the edge functions** (they now share
+`supabase/functions/_shared/quota.ts`, which the CLI bundles automatically —
+dashboard-paste deploys need that file added alongside `index.ts`):
+
+```bash
+npx supabase functions deploy coach plan-designer find-videos push-send --project-ref fugrbmkhuhphskitpvzc
+npx supabase functions deploy health-sync --no-verify-jwt --project-ref fugrbmkhuhphskitpvzc
+```
+
+Daily caps per user (UTC days): coach 10, plan-designer 10, find-videos 20
+web-search batches (cache hits stay free), rest-timer pushes 200. Over-cap
+calls return a clear message the app surfaces; adjust the numbers in each
+function if they ever pinch.
+
+**3. Invite-only sign-ups** — Supabase Dashboard → Authentication → Sign In /
+Providers → turn off **Allow new users to sign up**, then add people via
+Authentication → Users → **Invite user**. Existing accounts keep signing in
+with magic links / codes as before; strangers get an "invite-only" message
+in the app's sign-in screen.
+
+**4. `APP_URL` secret** (optional but recommended): `push-send` falls back to
+this repo's GitHub Pages URL for notification clicks — set it explicitly on a
+fork: `npx supabase secrets set APP_URL=https://<you>.github.io/racked/`.
+
+Also in Phase 11 (no setup needed): the health-sync export window now covers
+the last two UTC days (plus `?date=` for an exact day) so evening Shortcut
+automations can't miss a US-timezone workout, and the app's offline
+queue/snapshot in localStorage is scoped per account, so two people sharing
+one browser can't bleed data into each other.
 
 ### 2. Environment variables
 

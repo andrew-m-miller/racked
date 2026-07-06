@@ -19,7 +19,7 @@ export default defineConfig({
       manifest: {
         name: "Racked",
         short_name: "Racked",
-        description: "3-day full body workout tracker",
+        description: "Workout tracker with built-in progression and a weekly AI coach",
         theme_color: "#101214",
         background_color: "#101214",
         display: "standalone",
