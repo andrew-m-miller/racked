@@ -208,6 +208,54 @@ export async function saveCoachRun(run) {
   }
 }
 
+// ---- health sync token (Phase 10) ----
+
+// One token per user authenticates the Apple Shortcuts / Health Connect
+// bridge against the health-sync edge function. RLS scopes the row to its
+// owner; the edge function resolves token → user with the service role.
+// All three fail hard if the sync_tokens table doesn't exist yet — the
+// setup UI catches and points at the README migration.
+export async function loadSyncToken() {
+  const { data, error } = await supabase.from("sync_tokens").select("token").maybeSingle();
+  if (error) throw error;
+  return data?.token ?? null;
+}
+
+export async function saveSyncToken(token) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not signed in");
+  const { error } = await supabase
+    .from("sync_tokens")
+    .upsert({ user_id: session.user.id, token }, { onConflict: "user_id" });
+  if (error) throw error;
+}
+
+export async function deleteSyncToken() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not signed in");
+  const { error } = await supabase.from("sync_tokens").delete().eq("user_id", session.user.id);
+  if (error) throw error;
+}
+
+// ---- push subscriptions (Phase 10) ----
+
+// One row per browser/device push subscription (endpoint is globally unique,
+// so it's the pk). The push-send edge function reads these server-side and
+// prunes rows whose endpoint the push service reports gone.
+export async function savePushSubscription(sub) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not signed in");
+  const { error } = await supabase
+    .from("push_subscriptions")
+    .upsert({ endpoint: sub.endpoint, user_id: session.user.id, keys: sub.keys }, { onConflict: "endpoint" });
+  if (error) throw error;
+}
+
+export async function deletePushSubscription(endpoint) {
+  const { error } = await supabase.from("push_subscriptions").delete().eq("endpoint", endpoint);
+  if (error) throw error;
+}
+
 export async function savePlan(planData) {
   // getSession reads the cached session locally — no network round-trip.
   const { data: { session } } = await supabase.auth.getSession();
