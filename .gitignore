@@ -3,5 +3,6 @@ dist
 .DS_Store
 .claude/settings.local.json
 CONTEXT.md
+IOS-PORT-PLAN.md
 .env
 supabase/.temp
