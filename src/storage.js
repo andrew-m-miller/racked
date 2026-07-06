@@ -165,6 +165,49 @@ export async function loadPlan() {
   });
 }
 
+// ---- coach runs ----
+
+// Weekly coach reviews, one row per (user, week): {week_start, review, applied}
+// where review is the edge function's {narrative, suggestions[]} and applied
+// maps suggestion index -> {inverse} for one-tap undo. Newest week first.
+// Fail-soft at the call site: before the coach_runs migration runs, loading
+// throws and the app just works live-only with no history.
+export async function loadCoachRuns() {
+  return fetchWithSnapshot("coachRuns", async () => {
+    const { data, error } = await supabase
+      .from("coach_runs")
+      .select("week_start, review, applied")
+      .order("week_start", { ascending: false });
+    if (error) throw error;
+    return data.map((r) => ({ week_start: r.week_start, review: r.review, applied: r.applied || {} }));
+  });
+}
+
+export async function saveCoachRun(run) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not signed in");
+  const { error } = await supabase
+    .from("coach_runs")
+    .upsert(
+      {
+        user_id: session.user.id,
+        week_start: run.week_start,
+        review: run.review,
+        applied: run.applied,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,week_start" }
+    );
+  if (error) throw error;
+  const cached = readSnapshot().coachRuns;
+  if (Array.isArray(cached)) {
+    saveSnapshot("coachRuns", [
+      ...cached.filter((r) => r.week_start !== run.week_start),
+      { week_start: run.week_start, review: run.review, applied: run.applied },
+    ].sort((a, b) => (a.week_start < b.week_start ? 1 : -1)));
+  }
+}
+
 export async function savePlan(planData) {
   // getSession reads the cached session locally — no network round-trip.
   const { data: { session } } = await supabase.auth.getSession();

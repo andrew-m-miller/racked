@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { loadLogs, addLogEntry, clearAllLogs, loadWeighIns, addWeighIn, loadPlan, savePlan, flushPending, onPendingChange } from "./storage.js";
+import { loadLogs, addLogEntry, clearAllLogs, loadWeighIns, addWeighIn, loadPlan, savePlan, loadCoachRuns, saveCoachRun, flushPending, onPendingChange } from "./storage.js";
 import { SEED_DAYS, SEED_META } from "./planUtils.js";
+import { upsertRun } from "./coachUtils.js";
 
 // Shared data root: logs / weigh-ins / plan, their loaders, and the
 // optimistic-update-with-rollback writes, lifted out of RackedTracker so
@@ -21,6 +22,10 @@ export function AppStateProvider({ children }) {
   const [weighIns, setWeighIns] = useState([]); // [{date, weight}]
   const [days, setDays] = useState(SEED_DAYS); // live plan; Supabase row wins over the bundled seed
   const [planMeta, setPlanMeta] = useState(SEED_META); // goal/daysPerWeek/description for the live plan
+  // Cached weekly coach reviews, newest week first. null = load failed (e.g.
+  // the coach_runs table doesn't exist yet), which disables auto-run and
+  // history but leaves the live coach call working — fail-soft like weigh-ins.
+  const [coachRuns, setCoachRuns] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [isNewUser, setIsNewUser] = useState(false); // no plan row + no logs → offer onboarding
   const [saveError, setSaveError] = useState(false);
@@ -44,13 +49,14 @@ export function AppStateProvider({ children }) {
     // exist yet, the rest of the app still works (plan falls back to the seed).
     // loadPlan maps a failure to undefined so "no row yet" (null) stays
     // distinguishable — only a genuinely blank account gets onboarding.
-    Promise.all([loadLogs(), loadWeighIns().catch(() => []), loadPlan().catch(() => undefined)])
-      .then(([logData, weighData, planData]) => {
+    Promise.all([loadLogs(), loadWeighIns().catch(() => []), loadPlan().catch(() => undefined), loadCoachRuns().catch(() => null)])
+      .then(([logData, weighData, planData, runData]) => {
         if (!cancelled) {
           setLogs(logData);
           setWeighIns(weighData);
           setDays(planData?.days?.length ? planData.days : SEED_DAYS);
           setPlanMeta(planData?.meta ?? SEED_META);
+          setCoachRuns(runData);
           setIsNewUser(planData === null && Object.keys(logData).length === 0);
         }
       })
@@ -103,6 +109,15 @@ export function AppStateProvider({ children }) {
     }
   }, []);
 
+  // Upsert one week's coach run (review + applied map). Optimistic like the
+  // other writes, but a failed save is non-fatal: the review is already on
+  // screen, the cache is just insurance for next open — so no error banner,
+  // and the in-memory copy is kept so undo state stays coherent this session.
+  const recordCoachRun = useCallback((run) => {
+    setCoachRuns((prev) => upsertRun(prev || [], run));
+    saveCoachRun(run).catch(() => {});
+  }, []);
+
   const clearLogs = useCallback(() => {
     const previousLogs = logs;
     setLogs({});
@@ -120,6 +135,7 @@ export function AppStateProvider({ children }) {
       weighIns,
       days,
       planMeta,
+      coachRuns,
       loaded,
       isNewUser,
       saveError,
@@ -127,9 +143,10 @@ export function AppStateProvider({ children }) {
       logEntry,
       logWeighIn,
       saveLivePlan,
+      recordCoachRun,
       clearLogs,
     }),
-    [logs, weighIns, days, planMeta, loaded, isNewUser, saveError, pendingSync, logEntry, logWeighIn, saveLivePlan, clearLogs]
+    [logs, weighIns, days, planMeta, coachRuns, loaded, isNewUser, saveError, pendingSync, logEntry, logWeighIn, saveLivePlan, recordCoachRun, clearLogs]
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

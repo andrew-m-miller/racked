@@ -17,14 +17,15 @@ function toKey(date) {
   return `${y}-${m}-${d}`;
 }
 
-// Monday of the week containing dateStr (matches the streak logic in ProgressView).
-function weekStart(dateStr) {
+// Monday of the week containing dateStr (matches the streak logic in
+// ProgressView). Exported for the coach-run cache, which keys runs by week.
+export function weekStart(dateStr) {
   const d = toDate(dateStr);
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
   return toKey(d);
 }
 
-function shiftDays(dateStr, n) {
+export function shiftDays(dateStr, n) {
   const d = toDate(dateStr);
   d.setDate(d.getDate() + n);
   return toKey(d);

@@ -4,6 +4,7 @@ import { supabase } from "./supabaseClient.js";
 import { SEED_DAYS, SEED_META, slug, exMetric, metricUnit, dayForDate, finisherSlug, localDateKey } from "./planUtils.js";
 import { useAppState } from "./AppState.jsx";
 import { useHashRoute } from "./useHashRoute.js";
+import { useAutoCoach } from "./useAutoCoach.js";
 import DayTabs from "./DayTabs.jsx";
 import ExerciseCard from "./ExerciseCard.jsx";
 import FinisherCard from "./FinisherCard.jsx";
@@ -47,6 +48,7 @@ export default function RackedTracker({ session }) {
     useAppState();
   const [route, navigate] = useHashRoute();
   const view = route.view; // "workout" | "progress" | "edit" | "onboard"
+  useAutoCoach(); // opt-in weekly check-in: pre-runs the coach for the week that just ended
 
   const [activeDay, setActiveDay] = useState(SEED_DAYS[0].id);
   const [restEndsAt, setRestEndsAt] = useState(null);
@@ -164,21 +166,25 @@ export default function RackedTracker({ session }) {
   };
 
   // Apply a coach-suggested tweak ({exercise, sets, reps}, nulls = unchanged)
-  // to the live plan. Matches by slug across all days, primaries only.
+  // to the live plan. Matches by slug across all days, primaries only. Rejects
+  // when nothing matches (the coach is told to only name plan exercises, but a
+  // silent no-op here would show "Applied" for an edit that never happened).
   const handleApplyPlanChange = (change) => {
     const key = slug(change.exercise);
+    let matched = false;
     const nextDays = days.map((d) => ({
       ...d,
-      exercises: d.exercises.map((ex) =>
-        slug(ex.name) === key
-          ? {
-              ...ex,
-              ...(change.sets != null ? { sets: Number(change.sets) } : {}),
-              ...(change.reps != null ? { reps: String(change.reps) } : {}),
-            }
-          : ex
-      ),
+      exercises: d.exercises.map((ex) => {
+        if (slug(ex.name) !== key) return ex;
+        matched = true;
+        return {
+          ...ex,
+          ...(change.sets != null ? { sets: Number(change.sets) } : {}),
+          ...(change.reps != null ? { reps: String(change.reps) } : {}),
+        };
+      }),
     }));
+    if (!matched) return Promise.reject(new Error(`"${change.exercise}" isn't in the current plan`));
     return handleSavePlan(nextDays);
   };
 

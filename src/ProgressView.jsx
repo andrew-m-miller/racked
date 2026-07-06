@@ -3,7 +3,7 @@ import { Scale, Flame, ChevronLeft, ChevronRight, Download } from "lucide-react"
 import { dayForDate, localDateKey } from "./planUtils.js";
 import { useAppState } from "./AppState.jsx";
 import { LineChart } from "./charts.jsx";
-import RecapSection from "./RecapSection.jsx";
+import CoachSection from "./CoachSection.jsx";
 import { logsToCSV, weighInsToCSV, buildExportJSON } from "./dataExport.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -403,14 +403,23 @@ function ExportSection({ days, logs, weighIns, today, meta }) {
 }
 
 export default function ProgressView({ onApplyPlanChange }) {
-  const { days, logs, weighIns, planMeta: meta, logWeighIn } = useAppState();
+  const { days, logs, weighIns, planMeta: meta, coachRuns, recordCoachRun, logWeighIn } = useAppState();
   const today = localDateKey();
   const onAddWeighIn = (weightLb) => logWeighIn(today, weightLb);
   return (
     <div>
       <BodyweightSection weighIns={weighIns} today={today} onAddWeighIn={onAddWeighIn} />
       <CalendarSection days={days} logs={logs} today={today} meta={meta} />
-      <RecapSection days={days} logs={logs} weighIns={weighIns} today={today} meta={meta} onApplyPlanChange={onApplyPlanChange} />
+      <CoachSection
+        days={days}
+        logs={logs}
+        weighIns={weighIns}
+        today={today}
+        meta={meta}
+        coachRuns={coachRuns}
+        onRecordRun={recordCoachRun}
+        onApplyPlanChange={onApplyPlanChange}
+      />
       <ExportSection days={days} logs={logs} weighIns={weighIns} today={today} meta={meta} />
     </div>
   );
