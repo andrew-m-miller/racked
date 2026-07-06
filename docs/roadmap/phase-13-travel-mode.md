@@ -1,5 +1,26 @@
 # Phase 13 — Travel Mode
 
+> **Shipped** (July 2026). Implementation notes / deliberate divergences:
+> - **"Hotel gym" allows cable** alongside dumbbells + machines: most hotel
+>   multi-gyms *are* cable stacks, and excluding cable stranded lat pulldowns
+>   in exactly the room that has one.
+> - **The profile walks every plan day, not just today's** — swaps are keyed
+>   by primary slug and shared across day tabs, so applying the profile
+>   plan-wide keeps the constraint when the user changes tabs mid-trip. Still
+>   session-scoped; resets on reload/plan save, exactly like a manual swap.
+> - **The toggle lives on the workout view** (a `TravelToggle` chip row above
+>   the day title) rather than behind a "session start" moment — the app has
+>   no explicit session start; the first logged set is the start.
+> - **Tags are by required apparatus, not load**: hanging knee raises, back
+>   extensions, and decline sit-ups log as bodyweight but are tagged
+>   `machine` — a hotel room has a floor, not a hyperextension bench.
+> - Cable Bicep Curl and Lateral Raises deliberately got **no bodyweight
+>   variant** (none honest exists); they exercise the documented
+>   unmatched → manual-picker fallback, surfaced in the toggle's caption.
+> - Matching lives in `src/equipment.js` (pure, tested); the deload/travel
+>   pin landed in `progression.test.js`, and the existing planUtils alt-vote
+>   test already covers streak protection.
+
 The most common way a program dies isn't motivation — it's a week at a hotel
 with two dumbbells, followed by "the streak's dead anyway." The pieces mostly
 exist: `exercises.json` carries curated `alts` per exercise, `RackedTracker`

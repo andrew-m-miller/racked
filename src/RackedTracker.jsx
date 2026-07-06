@@ -2,12 +2,14 @@ import React, { useState, useEffect, useRef } from "react";
 import { Dumbbell, RotateCcw, BarChart3, Pencil, CloudOff, LogOut, CalendarDays } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { SEED_DAYS, SEED_META, slug, exMetric, metricUnit, dayForDate, finisherSlug, localDateKey, applyPlanChange } from "./planUtils.js";
+import { profileSwaps } from "./equipment.js";
 import { useAppState } from "./AppState.jsx";
 import { useHashRoute } from "./useHashRoute.js";
 import { useAutoCoach } from "./useAutoCoach.js";
 import { pushEnabled, scheduleRestPush } from "./push.js";
 import { FONTS_IMPORT } from "./ui.jsx";
 import DayTabs from "./DayTabs.jsx";
+import TravelToggle from "./TravelToggle.jsx";
 import ExerciseCard from "./ExerciseCard.jsx";
 import FinisherCard from "./FinisherCard.jsx";
 import RestTimer from "./RestTimer.jsx";
@@ -56,6 +58,7 @@ export default function RackedTracker({ session }) {
   const [logDate, setLogDate] = useState(null); // YYYY-MM-DD when backfilling a past workout; null = today
   const [onboardMode, setOnboardMode] = useState("new"); // "new" first-run · "replace" from the plan editor
   const [swaps, setSwaps] = useState({}); // session-scoped substitutions: { primarySlug: altName }
+  const [travelProfile, setTravelProfile] = useState(null); // Phase 13: active equipment profile id, or null
   const [prToast, setPrToast] = useState(null);
   const sessionStartRef = useRef(null); // first set logged in this app session
   const prToastTimerRef = useRef(null);
@@ -112,7 +115,9 @@ export default function RackedTracker({ session }) {
     const altName = swaps[slug(base.name)];
     if (!altName) return base;
     const alt = (base.alts || []).find((a) => a.name === altName);
-    return alt ? { ...base, name: alt.name, start: alt.start, url: alt.url } : base;
+    // equip must come from the alt (or its name-guess), never the primary —
+    // a swapped-in Push-Up isn't dumbbell work just because the slot is.
+    return alt ? { ...base, name: alt.name, start: alt.start, url: alt.url, equip: alt.equip } : base;
   };
   const activeExercises = day.exercises.map(effectiveExercise);
 
@@ -142,6 +147,25 @@ export default function RackedTracker({ session }) {
     else delete next[key];
     setSwaps(next);
   };
+
+  // Travel mode (Phase 13): a profile bulk-applies the same session swaps a
+  // manual pick would, across every plan day so changing tabs mid-trip stays
+  // constrained. Selecting replaces the whole swap map (a profile is a
+  // statement about the room, not a tweak); turning it off clears it. Manual
+  // swaps afterwards still work as the override/escape hatch.
+  const handleTravelProfile = (profileId) => {
+    setTravelProfile(profileId);
+    setSwaps(profileId ? profileSwaps(days, profileId).swaps : {});
+  };
+
+  // Status for the toggle's caption, scoped to the visible day.
+  const travelUnmatched = travelProfile
+    ? (() => {
+        const misses = new Set(profileSwaps(days, travelProfile).unmatched);
+        return day.exercises.filter((ex) => misses.has(slug(ex.name)) && !swaps[slug(ex.name)]).map((ex) => ex.name);
+      })()
+    : [];
+  const travelSwapped = day.exercises.filter((ex) => swaps[slug(ex.name)]).length;
 
   const handleLog = (ex, weight, reps, effort) => {
     const key = slug(ex.name);
@@ -189,6 +213,7 @@ export default function RackedTracker({ session }) {
   const handleSavePlan = async (nextDays, nextMeta = planMeta) => {
     await saveLivePlan(nextDays, nextMeta);
     setSwaps({});
+    setTravelProfile(null); // stale profile swaps may not exist in the new plan
     // The edited plan may have dropped the day that was open.
     if (!nextDays.some((d) => d.id === activeDay)) setActiveDay(nextDays[0]?.id);
   };
@@ -458,6 +483,14 @@ export default function RackedTracker({ session }) {
             </>
           )}
         </div>
+
+        {/* Travel mode: one-tap equipment-constrained session (Phase 13) */}
+        <TravelToggle
+          profile={travelProfile}
+          onSelect={handleTravelProfile}
+          swappedCount={travelSwapped}
+          unmatchedNames={travelUnmatched}
+        />
 
         {/* Day title + progress */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>

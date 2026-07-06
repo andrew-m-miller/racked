@@ -171,6 +171,20 @@ describe("computeSuggestion — deload", () => {
     expect(s.detail).toBe("Missed target 2 sessions in a row");
   });
 
+  it("a travel week can't count against the original lift — the scan sees only that slug's sessions (Phase 13)", () => {
+    // One miss, then a week of sessions logged under a substitute's slug
+    // (i.e. nothing in THIS history), then back home. The calendar gap and
+    // the substitute's sessions must contribute zero misses: still one
+    // consecutive miss, so no deload.
+    const history = [
+      { weight: 30, reps: 12, effort: null, date: "2026-01-01" },
+      { weight: 30, reps: 9, effort: null, date: "2026-01-08" }, // miss, then travel
+    ];
+    const s = computeSuggestion(upperWeighted, history);
+    expect(s.trend).toBe("flat");
+    expect(s.text).toBe("Hold at 30 lb");
+  });
+
   it("a session whose last set is a clean hit stops the scan even if its early sets missed", () => {
     const history = [
       { weight: 30, reps: 8, effort: null, date: "2026-01-01" },
