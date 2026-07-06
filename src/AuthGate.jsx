@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Dumbbell, Mail } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
+import { FONTS_IMPORT } from "./ui.jsx";
 
 // Magic-link sign-in wall. Renders children(session) once authenticated; the
 // session persists in localStorage, so after the first sign-in this is
@@ -50,7 +51,13 @@ function SignIn() {
       options: { emailRedirectTo: window.location.href },
     });
     if (error) {
-      setErrorMsg(error.message);
+      // With public sign-ups disabled (invite-only deployment), Supabase
+      // rejects unknown emails with "Signups not allowed" — say so usefully.
+      setErrorMsg(
+        /signups? not allowed/i.test(error.message)
+          ? "This app is invite-only — ask whoever shared it with you for an invite, then sign in here with the same email."
+          : error.message
+      );
       setState("error");
     } else {
       setCodeSent(true);
@@ -91,7 +98,7 @@ function SignIn() {
       }}
     >
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
+        ${FONTS_IMPORT}
         input:focus { border-color: #6B7280 !important; }
       `}</style>
 

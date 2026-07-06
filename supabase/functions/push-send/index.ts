@@ -19,6 +19,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import * as webpush from "jsr:@negrel/webpush";
+import { underDailyCap } from "../_shared/quota.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
@@ -88,6 +89,12 @@ Deno.serve(async (req) => {
     if (type === "timer") {
       if (claims.role !== "authenticated" || !claims.sub) {
         return Response.json({ error: "sign in required" }, { status: 401, headers: CORS });
+      }
+      // Each timer holds an isolate open for the delay, so cap the daily
+      // volume per user — 200 covers the heaviest legitimate day (one call
+      // per logged set + extensions) with a wide margin.
+      if (!(await underDailyCap(admin, claims.sub, "push-timer", 200))) {
+        return Response.json({ ok: false, error: "daily push limit reached" }, { headers: CORS });
       }
       const delay = Math.min(Math.max(Number(seconds) || 0, 5), 300); // rest timers live in this range; cap well under the 400s wall clock
       const { data: subs, error } = await admin

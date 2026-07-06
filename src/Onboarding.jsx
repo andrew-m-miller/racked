@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Sparkles, Flame, Check, AlertTriangle } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
+import { backendErrorMessage } from "./coach.js";
 import { slug, CAT_COLOR } from "./planUtils.js";
 
 // AI plan designer: a guided goals form → the plan-designer Edge Function
@@ -158,10 +159,7 @@ export default function Onboarding({ mode, onAccept, onSkip, onCancel }) {
       setTweak("");
       setStep("review");
     } catch (err) {
-      const msg = /not found|404|Failed to send/i.test(String(err?.message))
-        ? "Plan designer backend isn't deployed yet — see the README for the one-time Edge Function setup."
-        : String(err?.message || "Something went wrong — try again.");
-      setError(msg);
+      setError(backendErrorMessage(err, "Plan designer"));
       // A failed regenerate keeps the last good plan on screen.
       setStep(result ? "review" : "form");
     }

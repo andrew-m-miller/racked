@@ -20,3 +20,13 @@ export async function requestCoachReview({ recap, days }) {
   if (data?.error) throw new Error(data.error);
   return data;
 }
+
+// User-facing message for a failed edge-function call. supabase-js surfaces
+// an undeployed function as a 404 / "Failed to send" fetch error; everything
+// else shows its own message. Shared by the coach and plan-designer call
+// sites so the wording (and the error-shape sniffing) lives in one place.
+export function backendErrorMessage(err, name) {
+  return /not found|404|Failed to send/i.test(String(err?.message))
+    ? `${name} backend isn't deployed yet — see the README for the one-time Edge Function setup.`
+    : String(err?.message || "Something went wrong — try again.");
+}

@@ -1,4 +1,4 @@
-import { slug, isTimeBased, isBodyweightEx, dayForDate, finisherSlug } from "./planUtils.js";
+import { slug, isTimeBased, isBodyweightEx, buildDayIndex, finisherSlug } from "./planUtils.js";
 import { computeSuggestion, targetNumber } from "./progression.js";
 
 // ---- Tier 1 AI coach: build a paste-ready weekly recap ----
@@ -91,7 +91,8 @@ export function buildWeeklyInsights({ days, logs, today }) {
   const dates = new Set();
   for (const entries of Object.values(logs)) for (const e of entries) if (inWeek(e)) dates.add(e.date);
   const sessionDates = [...dates].sort();
-  const trainedDayIds = new Set(sessionDates.map((date) => dayForDate(days, logs, date)).filter(Boolean));
+  const dayIndex = buildDayIndex(days, logs);
+  const trainedDayIds = new Set(sessionDates.map((date) => dayIndex.get(date)).filter(Boolean));
   const missedDays = days.filter((d) => !trainedDayIds.has(d.id)).map((d) => d.name);
 
   // Stall flags: any lift whose next-session suggestion is a deload (or is
@@ -127,12 +128,13 @@ export function buildWeeklyRecap({ days, logs, weighIns, today, meta }) {
   const dates = new Set();
   for (const entries of Object.values(logs)) for (const e of entries) if (inWeek(e)) dates.add(e.date);
   const sessionDates = [...dates].sort();
+  const dayIndex = buildDayIndex(days, logs);
   const dayName = Object.fromEntries(days.map((d) => [d.id, d.name]));
   const sessionLines = sessionDates.map((date) => {
-    const id = dayForDate(days, logs, date);
+    const id = dayIndex.get(date);
     return `${id ? dayName[id] || id : "Session"} (${fmtDate(date)})`;
   });
-  const trainedDayIds = new Set(sessionDates.map((date) => dayForDate(days, logs, date)).filter(Boolean));
+  const trainedDayIds = new Set(sessionDates.map((date) => dayIndex.get(date)).filter(Boolean));
   const missed = days.filter((d) => !trainedDayIds.has(d.id)).map((d) => d.name);
 
   // ---- finishers ----
@@ -168,7 +170,7 @@ export function buildWeeklyRecap({ days, logs, weighIns, today, meta }) {
     for (const e of weekEntries) (byDate[e.date] ??= []).push(e);
     const sessions = Object.entries(byDate)
       .sort()
-      .map(([date, sets]) => fmtSets(def, sets))
+      .map(([, sets]) => fmtSets(def, sets))
       .join("; ");
     const target = targetNumber(def.reps);
     const lastSet = weekEntries[weekEntries.length - 1];

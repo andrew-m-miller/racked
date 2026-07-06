@@ -145,6 +145,42 @@ describe("computeSuggestion — deload", () => {
     expect(s.trend).toBe("down");
     expect(s.detail).toBe("Missed target 2 sessions in a row");
   });
+
+  it("does not deload from two missed sets within a single session", () => {
+    // Normal fatigue pattern: hit, miss, miss across one workout. The session
+    // is judged on its last set (one miss), not per set (two misses).
+    const history = [
+      { weight: 30, reps: 12, effort: null, date: "2026-01-01" },
+      { weight: 30, reps: 10, effort: null, date: "2026-01-01" },
+      { weight: 30, reps: 9, effort: null, date: "2026-01-01" },
+    ];
+    const s = computeSuggestion(upperWeighted, history);
+    expect(s.trend).toBe("flat");
+    expect(s.text).toBe("Hold at 30 lb");
+  });
+
+  it("deloads after two sessions that each ended under target, regardless of earlier sets", () => {
+    const history = [
+      { weight: 30, reps: 12, effort: null, date: "2026-01-01" },
+      { weight: 30, reps: 9, effort: null, date: "2026-01-01" },
+      { weight: 30, reps: 12, effort: null, date: "2026-01-08" },
+      { weight: 30, reps: 8, effort: null, date: "2026-01-08" },
+    ];
+    const s = computeSuggestion(upperWeighted, history);
+    expect(s.trend).toBe("down");
+    expect(s.detail).toBe("Missed target 2 sessions in a row");
+  });
+
+  it("a session whose last set is a clean hit stops the scan even if its early sets missed", () => {
+    const history = [
+      { weight: 30, reps: 8, effort: null, date: "2026-01-01" },
+      { weight: 30, reps: 9, effort: null, date: "2026-01-08" }, // early set under target
+      { weight: 30, reps: 12, effort: null, date: "2026-01-08" }, // ...but the session ends on a hit
+    ];
+    const s = computeSuggestion(upperWeighted, history);
+    expect(s.trend).toBe("up");
+    expect(s.text).toBe("Try 35 lb");
+  });
 });
 
 describe("computeSuggestion — effort modifiers", () => {

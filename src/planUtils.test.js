@@ -7,7 +7,10 @@ import {
   exMetric,
   finisherSlug,
   dayForDate,
+  buildDayIndex,
+  applyPlanChange,
 } from "./planUtils.js";
+import { inversePlanChange } from "./coachUtils.js";
 
 // ---- fixtures ----
 
@@ -108,6 +111,68 @@ describe("dayForDate", () => {
       "bench-press": [{ date: "2026-07-01", weight: "95", reps: "10" }],
     };
     expect(dayForDate(days, logs, "2026-07-02")).toBeNull();
+  });
+});
+
+describe("buildDayIndex", () => {
+  it("maps every logged date in one pass, matching dayForDate", () => {
+    const days = makeDays();
+    const logs = {
+      "bench-press": [{ date: "2026-07-01", weight: "95", reps: "10" }],
+      "goblet-squat": [{ date: "2026-07-03", weight: "35", reps: "12" }],
+      "lat-pulldown": [{ date: "2026-07-05", weight: "80", reps: "10" }],
+    };
+    const index = buildDayIndex(days, logs);
+    expect(index.get("2026-07-01")).toBe("A");
+    expect(index.get("2026-07-03")).toBe("B");
+    expect(index.get("2026-07-05")).toBe("C");
+    expect(index.get("2026-07-02")).toBeUndefined();
+  });
+
+  it("breaks a tied vote toward the earlier day in plan order", () => {
+    const days = makeDays();
+    // seated-cable-row is on A and C: one entry gives each a single vote,
+    // and the tie goes to A (first in plan order), same as the old scan.
+    const logs = { "seated-cable-row": [{ date: "2026-07-01", weight: "90", reps: "10" }] };
+    expect(buildDayIndex(days, logs).get("2026-07-01")).toBe("A");
+  });
+
+  it("ignores orphaned slugs that aren't in the plan", () => {
+    const days = makeDays();
+    const logs = { "removed-exercise": [{ date: "2026-07-01", weight: "50", reps: "10" }] };
+    expect(buildDayIndex(days, logs).size).toBe(0);
+  });
+});
+
+describe("applyPlanChange", () => {
+  it("updates only the touched fields of the matched exercise", () => {
+    const days = makeDays();
+    const next = applyPlanChange(days, { exercise: "Goblet Squat", sets: 4, reps: null });
+    const squat = next[1].exercises[0];
+    expect(squat.sets).toBe(4);
+    expect(squat.reps).toBe("10-12"); // null = leave unchanged
+    expect(days[1].exercises[0].sets).toBe(3); // input untouched
+  });
+
+  it("matches by slug, so casing/punctuation differences still apply", () => {
+    const days = makeDays();
+    const next = applyPlanChange(days, { exercise: "goblet squat", sets: null, reps: "8-10" });
+    expect(next[1].exercises[0].reps).toBe("8-10");
+  });
+
+  it("returns null when the exercise isn't in the plan", () => {
+    expect(applyPlanChange(makeDays(), { exercise: "Machine Fly", sets: 3, reps: "12" })).toBeNull();
+  });
+
+  it("round-trips with inversePlanChange: apply then apply the inverse restores the plan", () => {
+    const days = makeDays();
+    const change = { exercise: "Bench Press", sets: 4, reps: "6-8" };
+    const inverse = inversePlanChange(days, change); // captured before applying
+    const changed = applyPlanChange(days, change);
+    expect(changed[0].exercises[0].sets).toBe(4);
+    const restored = applyPlanChange(changed, inverse);
+    expect(restored[0].exercises[0].sets).toBe(3);
+    expect(restored[0].exercises[0].reps).toBe("8-10");
   });
 });
 

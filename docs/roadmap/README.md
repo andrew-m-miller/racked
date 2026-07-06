@@ -11,9 +11,9 @@ earlier ones rather than assuming a hard cutoff — the doc for a shipped phase
 also records where the implementation deliberately diverged from the plan
 (e.g. Phase 9's server cron shipping as a client-side auto-run).
 
-**Current state:** all ten phases plus the AI-coach stretch are shipped. There
-is no planned-but-unbuilt phase; when the next one takes shape, write its doc
-here first, add it to the table, and build against it.
+**Current state:** all eleven phases plus the AI-coach stretch are shipped.
+There is no planned-but-unbuilt phase; when the next one takes shape, write
+its doc here first, add it to the table, and build against it.
 
 ## Shipped
 
@@ -30,3 +30,4 @@ here first, add it to the table, and build against it.
 | 8 | [Component decomposition & routing](phase-8-decomposition.md) | Split `RackedTracker.jsx` into prop-driven components, hash router, `AppState` context. |
 | 9 | [Unified AI coaching](phase-9-unified-coaching.md) | Coach-first weekly view with apply/undo, `coach_runs` cache + history, opt-in weekly auto-run. |
 | 10 | [Health & device integration](phase-10-health-integration.md) | Apple Health / Health Connect bridge via Shortcuts, web push (rest timer + weekly nudge). |
+| 11 | [Hardening & sharing readiness](phase-11-hardening-and-sharing.md) | Bug fixes from the July 2026 full-codebase review, invite-only sign-ups + per-user AI quotas for sharing the deployment, one-pass log date index, shared UI module, ESLint CI gate. |

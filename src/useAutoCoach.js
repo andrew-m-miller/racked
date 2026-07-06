@@ -4,6 +4,7 @@ import { buildWeeklyRecap } from "./recap.js";
 import { requestCoachReview } from "./coach.js";
 import { pendingAutoReview } from "./coachUtils.js";
 import { localDateKey } from "./planUtils.js";
+import { scopedKey } from "./storageScope.js";
 
 // Opt-in weekly check-in (Phase 9): on the first open of a new week, review
 // the week that just finished and cache the result, so the coach's read is
@@ -14,7 +15,7 @@ export const AUTO_COACH_KEY = "racked-coach-auto";
 
 export function autoCoachEnabled() {
   try {
-    return localStorage.getItem(AUTO_COACH_KEY) === "1";
+    return localStorage.getItem(scopedKey(AUTO_COACH_KEY)) === "1";
   } catch {
     return false;
   }
@@ -22,8 +23,8 @@ export function autoCoachEnabled() {
 
 export function setAutoCoachEnabled(on) {
   try {
-    if (on) localStorage.setItem(AUTO_COACH_KEY, "1");
-    else localStorage.removeItem(AUTO_COACH_KEY);
+    if (on) localStorage.setItem(scopedKey(AUTO_COACH_KEY), "1");
+    else localStorage.removeItem(scopedKey(AUTO_COACH_KEY));
   } catch {
     // storage blocked — the toggle just won't stick
   }

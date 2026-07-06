@@ -1,5 +1,6 @@
 import { supabase } from "./supabaseClient.js";
 import { runOrQueue, flush, pendingOps, isNetworkError, discardOps } from "./syncQueue.js";
+import { scopedKey } from "./storageScope.js";
 
 export { pendingCount, onPendingChange } from "./syncQueue.js";
 
@@ -18,12 +19,14 @@ export function flushPending() {
 
 // Last successful server reads, so the app can cold-start in a dead-zone.
 // Snapshot holds server truth only — queued offline writes are layered on
-// top at read time, which keeps the two from double-counting.
+// top at read time, which keeps the two from double-counting. Scoped per
+// user (storageScope.js) so an offline cold start can't render a previous
+// account's data on a shared browser.
 const SNAP_KEY = "racked-snapshot-v1";
 
 function readSnapshot() {
   try {
-    return JSON.parse(localStorage.getItem(SNAP_KEY)) || {};
+    return JSON.parse(localStorage.getItem(scopedKey(SNAP_KEY))) || {};
   } catch {
     return {};
   }
@@ -31,7 +34,7 @@ function readSnapshot() {
 
 function saveSnapshot(key, value) {
   try {
-    localStorage.setItem(SNAP_KEY, JSON.stringify({ ...readSnapshot(), [key]: value }));
+    localStorage.setItem(scopedKey(SNAP_KEY), JSON.stringify({ ...readSnapshot(), [key]: value }));
   } catch {
     // best-effort cache only
   }

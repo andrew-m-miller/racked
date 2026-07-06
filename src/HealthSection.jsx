@@ -1,93 +1,19 @@
 import React, { useEffect, useState } from "react";
-import { Bell, BellOff, HeartPulse, Check, ClipboardCopy, ChevronDown, ChevronUp } from "lucide-react";
+import { Bell, BellOff, HeartPulse, Check, ChevronDown, ChevronUp } from "lucide-react";
 import { detectPushSupport, getPushSubscription, enablePush, disablePush } from "./push.js";
 import { loadSyncToken, saveSyncToken, deleteSyncToken } from "./storage.js";
 import { makeSyncToken, tokenedHealthSyncUrl } from "./healthSyncUtils.js";
+import { FONT_UI as FONT, FONT_MONO as MONO, SectionTitle as Header, CopyButton, ghostBtn } from "./ui.jsx";
 
 // Phase 10: the device-integration corner of the Progress screen — web push
 // notifications (rest timer + weekly check-in nudge) and the Apple Health /
 // Health Connect bridge. Both are strictly additive: unsupported browsers,
 // missing VAPID config, or a not-yet-migrated database all degrade to a
 // hint instead of an error.
-const FONT = "'Inter', sans-serif";
-const MONO = "'JetBrains Mono', monospace";
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
-
-function Header({ icon, children }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "22px 0 10px" }}>
-      {icon}
-      <h2
-        style={{
-          fontFamily: "'Oswald', sans-serif",
-          fontWeight: 600,
-          fontSize: 16,
-          color: "#F5F6F7",
-          margin: 0,
-          textTransform: "uppercase",
-          letterSpacing: "0.02em",
-        }}
-      >
-        {children}
-      </h2>
-    </div>
-  );
-}
-
-const ghostBtn = {
-  display: "flex",
-  alignItems: "center",
-  gap: 6,
-  background: "#1B1E22",
-  border: "1px solid #2A2E33",
-  borderRadius: 8,
-  color: "#9AA1AC",
-  cursor: "pointer",
-  padding: "8px 12px",
-  fontFamily: FONT,
-  fontSize: 12.5,
-  fontWeight: 500,
-};
 
 const hintText = { fontFamily: FONT, fontSize: 11.5, color: "#6B7280", lineHeight: 1.5 };
 const errorText = { fontFamily: FONT, fontSize: 12, color: "#F5B4B4", marginTop: 8 };
-
-function CopyButton({ text, label }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-  return (
-    <button
-      type="button"
-      onClick={copy}
-      style={{
-        ...ghostBtn,
-        padding: "6px 10px",
-        fontSize: 12,
-        background: copied ? "#14321C" : "#1B1E22",
-        color: copied ? "#22C55E" : "#9AA1AC",
-        border: copied ? "1px solid #22C55E" : "1px solid #2A2E33",
-      }}
-    >
-      {copied ? <Check size={12} /> : <ClipboardCopy size={12} />}
-      {copied ? "Copied" : label}
-    </button>
-  );
-}
 
 function NotificationsBlock() {
   const [support] = useState(() => detectPushSupport());
@@ -258,7 +184,8 @@ function HealthSyncBlock() {
               3. Automation: run it daily after your usual weigh-in time. Re-sends of the same weight/date are
               ignored, so re-runs are safe.
               <div style={{ color: "#9AA1AC", fontWeight: 600, margin: "10px 0 4px" }}>Racked → Apple Health</div>
-              1. New shortcut → <em>Get Contents of URL</em>: the URL above (GET). It returns today's session —{" "}
+              1. New shortcut → <em>Get Contents of URL</em>: the URL above (GET). It returns your finished sessions
+              from the last two days as <span style={{ fontFamily: MONO }}>workouts</span> — use the latest item,{" "}
               <span style={{ fontFamily: MONO }}>{"{date, sets, lift_min, cardio_min, finisher_done}"}</span>.
               <br />
               2. <em>Log Workout</em>: Traditional Strength Training, duration ={" "}
@@ -266,7 +193,8 @@ function HealthSyncBlock() {
               <span style={{ fontFamily: MONO }}>cardio_min</span> if you want the finisher counted separately.
               <br />
               3. Automation: run it in the evening on training days (add{" "}
-              <span style={{ fontFamily: MONO }}>&amp;since=YYYY-MM-DD</span> to backfill a date range).
+              <span style={{ fontFamily: MONO }}>&amp;date=YYYY-MM-DD</span> for one exact day, or{" "}
+              <span style={{ fontFamily: MONO }}>&amp;since=YYYY-MM-DD</span> to backfill a range).
             </div>
           )}
         </div>

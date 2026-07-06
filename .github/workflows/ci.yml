@@ -23,5 +23,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Lint rides inside the `test` job on purpose — the main-branch ruleset
+      # requires a check with exactly this job's name.
+      - name: Lint
+        run: npm run lint
+
       - name: Run tests
         run: npm test

@@ -76,18 +76,25 @@ Deno.serve(async (req) => {
 
     // ---- export: finished workouts ----
     if (req.method === "GET") {
-      // Defaults to today only, so an evening automation can't re-log old
-      // sessions; ?since= widens the window for a backfill.
-      const today = new Date().toISOString().slice(0, 10);
+      // Window: ?date= exports exactly that day, ?since= widens it for a
+      // backfill. The default covers UTC today *and* yesterday, because log
+      // dates are the client's *local* day — for a US-evening automation the
+      // server is already on tomorrow's UTC date, and the old today-only
+      // window came back empty exactly when it was documented to run.
+      const dateParam = url.searchParams.get("date");
       const sinceParam = url.searchParams.get("since");
-      const since = sinceParam && DATE_RE.test(sinceParam) ? sinceParam : today;
+      const exact = dateParam && DATE_RE.test(dateParam) ? dateParam : null;
+      const utcYesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const since = exact ?? (sinceParam && DATE_RE.test(sinceParam) ? sinceParam : utcYesterday);
 
-      const { data: logs, error: logErr } = await admin
+      let query = admin
         .from("logs")
         .select("exercise_slug, date, reps")
         .eq("user_id", userId)
         .gte("date", since)
         .order("date", { ascending: true });
+      if (exact) query = query.lte("date", exact);
+      const { data: logs, error: logErr } = await query;
       if (logErr) throw logErr;
 
       const byDate = new Map<string, { sets: number; cardio_min: number }>();

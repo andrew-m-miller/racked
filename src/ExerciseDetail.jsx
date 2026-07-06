@@ -3,6 +3,7 @@ import { ChevronLeft, Trophy } from "lucide-react";
 import { CAT_COLOR, exMetric, metricUnit } from "./planUtils.js";
 import { fmtSets } from "./recap.js";
 import { isWeighted, e1rmSeries, e1rmStats, sessionsByDate } from "./insights.js";
+import { StatBlock } from "./ui.jsx";
 import { LineChart } from "./charts.jsx";
 
 function shortDate(dateStr) {
@@ -14,18 +15,6 @@ function longDate(dateStr) {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
-function StatBlock({ label, value, sub, accent }) {
-  return (
-    <div style={{ flex: 1, background: "#1B1E22", border: "1px solid #2A2E33", borderRadius: 10, padding: "12px 14px" }}>
-      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 20, fontWeight: 600, color: accent || "#F5F6F7" }}>
-        {value}
-      </div>
-      <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11.5, color: "#9AA1AC", marginTop: 2 }}>{label}</div>
-      {sub && <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10.5, color: "#6B7280", marginTop: 2 }}>{sub}</div>}
-    </div>
-  );
-}
-
 // Full-history drill-down for one exercise, opened from a card's sparkline.
 // Works for primaries and swapped-in alternates alike — each logs under its
 // own slug, so `history` is already that movement's own record.
@@ -33,9 +22,11 @@ export default function ExerciseDetail({ ex, history, onClose }) {
   const values = history.map((e) => exMetric(ex, e));
   const unit = metricUnit(ex);
   const color = CAT_COLOR[ex.cat];
-  const best = Math.max(...values);
-  const prIndex = values.lastIndexOf(best);
-  const prEntry = history[prIndex];
+  // Deep links (#/exercise/<slug>) can open a never-logged exercise, where
+  // Math.max() over nothing would render "-Infinity".
+  const best = values.length ? Math.max(...values) : null;
+  const prIndex = best == null ? -1 : values.lastIndexOf(best);
+  const prEntry = prIndex >= 0 ? history[prIndex] : undefined;
 
   const weighted = isWeighted(ex);
   const e1rm = weighted ? e1rmStats(ex, history) : null;
@@ -109,7 +100,7 @@ export default function ExerciseDetail({ ex, history, onClose }) {
         <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
           <StatBlock
             label={`all-time best (${unit})`}
-            value={best}
+            value={best ?? "—"}
             sub={prEntry ? longDate(prEntry.date) : undefined}
             accent="#FACC15"
           />
@@ -160,6 +151,9 @@ export default function ExerciseDetail({ ex, history, onClose }) {
             Sessions
           </h2>
         </div>
+        {sessions.length === 0 ? (
+          <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 12.5, color: "#6B7280" }}>No sets logged yet.</div>
+        ) : (
         <div style={{ background: "#1B1E22", border: "1px solid #2A2E33", borderRadius: 10 }}>
           {[...sessions].reverse().map(({ date, sets }, i) => {
             const hasPr = prEntry && date === prEntry.date && sets.includes(prEntry);
@@ -185,6 +179,7 @@ export default function ExerciseDetail({ ex, history, onClose }) {
             );
           })}
         </div>
+        )}
       </div>
     </div>
   );

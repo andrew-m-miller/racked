@@ -21,6 +21,7 @@ import Anthropic from "npm:@anthropic-ai/sdk";
 import { z } from "npm:zod";
 import { zodOutputFormat } from "npm:@anthropic-ai/sdk/helpers/zod";
 import { createClient } from "npm:@supabase/supabase-js";
+import { jwtSub, underDailyCap } from "../_shared/quota.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -101,8 +102,12 @@ Deno.serve(async (req) => {
     }
 
     // Search for the rest. Errors mid-search still return whatever resolved —
-    // this endpoint is best-effort by design.
-    if (bySlug.size > 0) {
+    // this endpoint is best-effort by design. The per-user daily cap gates
+    // only this paid web-search path (checked lazily, so fully-cached calls
+    // don't spend quota); an over-cap caller just keeps the client's
+    // search-link fallback.
+    const userId = jwtSub(req);
+    if (bySlug.size > 0 && userId != null && (await underDailyCap(supabase, userId, "find-videos", 20))) {
       try {
         const names = [...bySlug.values()];
         const client = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") });
