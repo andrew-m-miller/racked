@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { MessageSquareText, ClipboardCopy, Check, Sparkles, RefreshCw, ChevronDown, ChevronUp, Undo2 } from "lucide-react";
 import { buildWeeklyRecap, weekStart } from "./recap.js";
 import { requestCoachReview, backendErrorMessage } from "./coach.js";
-import { inversePlanChange, weekLabel } from "./coachUtils.js";
+import { inversePlanChange, inverseCycleChange, weekLabel } from "./coachUtils.js";
 import { autoCoachEnabled, setAutoCoachEnabled } from "./useAutoCoach.js";
 import { FONT_UI as FONT, copyText } from "./ui.jsx";
 
@@ -13,7 +13,7 @@ import { FONT_UI as FONT, copyText } from "./ui.jsx";
 // onApplyPlanChange with a persisted applied/undo state, and past weeks stay
 // readable as history.
 
-export default function CoachSection({ days, logs, weighIns, today, meta, coachRuns, onRecordRun, onApplyPlanChange }) {
+export default function CoachSection({ days, logs, weighIns, today, meta, coachRuns, onRecordRun, onApplyPlanChange, onApplyCycleChange }) {
   const [copied, setCopied] = useState(false);
   const [coach, setCoach] = useState({ state: "idle" }); // idle | loading | error
   const [applying, setApplying] = useState(null); // suggestion index mid-save
@@ -33,7 +33,7 @@ export default function CoachSection({ days, logs, weighIns, today, meta, coachR
     setCoach({ state: "loading" });
     setApplyErrors({});
     try {
-      const review = await requestCoachReview({ recap, days });
+      const review = await requestCoachReview({ recap, days, meta, today });
       onRecordRun({ week_start: thisWeek, review, applied: {} });
       setCoach({ state: "idle" });
     } catch (err) {
@@ -41,13 +41,22 @@ export default function CoachSection({ days, logs, weighIns, today, meta, coachR
     }
   };
 
-  const apply = async (i, change) => {
+  // A suggestion carries either a plan_change (exercise tweak) or a
+  // cycle_change (block structure, Phase 15) — the suggestion itself decides
+  // which apply/undo path both directions use.
+  const apply = async (i, s) => {
     setApplying(i);
     setApplyErrors((e) => ({ ...e, [i]: undefined }));
     try {
       // Capture the revert before the plan changes out from under us.
-      const inverse = inversePlanChange(days, change);
-      await onApplyPlanChange(change);
+      let inverse;
+      if (s.cycle_change) {
+        inverse = inverseCycleChange(meta);
+        await onApplyCycleChange(s.cycle_change);
+      } else {
+        inverse = inversePlanChange(days, s.plan_change);
+        await onApplyPlanChange(s.plan_change);
+      }
       onRecordRun({ ...displayRun, applied: { ...displayRun.applied, [i]: { inverse } } });
     } catch (err) {
       setApplyErrors((e) => ({ ...e, [i]: String(err?.message || "Couldn't apply — try again.") }));
@@ -57,10 +66,11 @@ export default function CoachSection({ days, logs, weighIns, today, meta, coachR
   };
 
   const undo = async (i) => {
+    const s = displayRun.review.suggestions?.[i];
     const inverse = displayRun.applied?.[i]?.inverse;
     setApplying(i);
     try {
-      if (inverse) await onApplyPlanChange(inverse);
+      if (inverse) await (s?.cycle_change ? onApplyCycleChange(inverse) : onApplyPlanChange(inverse));
       const applied = { ...displayRun.applied };
       delete applied[i];
       onRecordRun({ ...displayRun, applied });
@@ -100,6 +110,7 @@ export default function CoachSection({ days, logs, weighIns, today, meta, coachR
   const renderSuggestions = (run, interactive) =>
     (run.review.suggestions || []).map((s, i) => {
       const isApplied = !!run.applied?.[i];
+      const applicable = !!(s.plan_change || s.cycle_change);
       return (
         <div key={i} style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #2A2E33" }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
@@ -110,19 +121,19 @@ export default function CoachSection({ days, logs, weighIns, today, meta, coachR
                 <div style={{ fontFamily: FONT, fontSize: 11.5, color: "#F5B4B4", marginTop: 4 }}>{applyErrors[i]}</div>
               )}
             </div>
-            {s.plan_change && !interactive && isApplied && (
+            {applicable && !interactive && isApplied && (
               <span style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 4, fontFamily: FONT, fontWeight: 600, fontSize: 11.5, color: "#22C55E" }}>
                 <Check size={12} /> Applied
               </span>
             )}
-            {s.plan_change && interactive && (
+            {applicable && interactive && (
               <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
                 {/* The whole group disables while any apply/undo is in flight,
                     so a second tap can't record against a stale `applied` map. */}
                 <button
                   type="button"
                   disabled={isApplied || applying != null}
-                  onClick={() => apply(i, s.plan_change)}
+                  onClick={() => apply(i, s)}
                   style={{
                     display: "flex",
                     alignItems: "center",

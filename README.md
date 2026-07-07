@@ -644,6 +644,36 @@ code points here; without the `buddy-status` deploy the section shows the
 setup UI and redeeming reports the backend is missing. Nothing else is
 affected.
 
+### Phase 15 — mesocycle programming (no migration needed)
+
+Phase 15 adds planned training blocks: `meta.cycle = {lengthWeeks,
+deloadWeeks: [n], startDate}` inside the existing `plan` jsonb row. Weeks
+listed in `deloadWeeks` suggest ~90% of the working weight at the same rep
+ranges, are excluded from the reactive-deload miss count, tint the
+consistency calendar, and get a one-line explainer on the workout view.
+Week-in-block always derives from `startDate` + the Monday week key — there
+is no stored counter to migrate or drift.
+
+**No SQL to run** — the cycle lives in plan jsonb, and every read site treats
+a missing/invalid `meta.cycle` as "no block structure", so pre-15 rows behave
+exactly as before. Enable it per-user in the plan editor ("Train in blocks"),
+via a coach suggestion, or let the plan designer propose one for experienced
+lifters.
+
+Redeploy two Edge Functions to pick up the coach/designer sides:
+
+```bash
+npx supabase functions deploy coach --project-ref <your-project-ref>
+npx supabase functions deploy plan-designer --project-ref <your-project-ref>
+```
+
+`coach` gains a `cycle_change` suggestion type (adjust block length, move the
+deload, start the next block) applied client-side with the same one-tap
+apply/undo as plan tweaks; `plan-designer` proposes a 4-week block (week 4
+deload) for experienced lifters. Fail-soft both ways: an old `coach`
+deployment simply never returns cycle suggestions, and a new one ignores
+callers that don't send cycle state.
+
 ### 2. Environment variables
 
 Copy `.env.example` to `.env` and fill in your credentials:
@@ -683,6 +713,9 @@ Live at `https://andrew-m-miller.github.io/racked/`.
 - Progression suggestions: +5 lb (upper) / +10 lb (lower) once you hit the top of
   the rep range, +5-10 sec on core holds, automatic 10% deload after 2 missed
   sessions in a row
+- Mesocycle blocks (opt-in): repeating N-week cycles with planned deload weeks —
+  ~90% suggestions on the deload, week-in-block in the insight strip, tinted
+  calendar weeks, and the coach can program the next block
 - Exercise cards link out to a form-tutorial video
 - 90s rest timer after every set, per-set progress, and a workout-complete summary
 - Progress screen: bodyweight trend (7-day smoothed), streak counters, and a

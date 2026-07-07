@@ -1,18 +1,25 @@
 import { supabase } from "./supabaseClient.js";
+import { normalizeCycle } from "./cycleUtils.js";
 
 // Client for the `coach` Edge Function (see supabase/functions/coach). Kept
 // out of the view components so nothing under src/*.jsx talks to Supabase
 // directly — same boundary rule as storage.js, for a function instead of a
 // table. Returns the parsed {narrative, suggestions[]} review or throws.
-export async function requestCoachReview({ recap, days }) {
+// `meta`/`today` are optional (Phase 15): they carry the mesocycle state and
+// the caller's local date so the coach can program the next block — log
+// dates are client-local, so the server can't derive "today" itself.
+export async function requestCoachReview({ recap, days, meta, today }) {
+  const cycle = normalizeCycle(meta?.cycle);
   const { data, error } = await supabase.functions.invoke("coach", {
     body: {
       recap,
+      today,
       plan: {
         days: days.map((d) => ({
           name: d.name,
           exercises: d.exercises.map(({ name, sets, reps }) => ({ name, sets, reps })),
         })),
+        ...(cycle ? { cycle } : {}),
       },
     },
   });

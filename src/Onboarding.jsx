@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Sparkles, Flame, Check, AlertTriangle } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { backendErrorMessage } from "./coach.js";
-import { slug, CAT_COLOR } from "./planUtils.js";
+import { slug, CAT_COLOR, localDateKey } from "./planUtils.js";
+import { cycleWeekKey } from "./cycleUtils.js";
 
 // AI plan designer: a guided goals form → the plan-designer Edge Function
 // (Claude, 30-60s) → a review screen with tweak-and-regenerate. While the
@@ -170,7 +171,14 @@ export default function Onboarding({ mode, onAccept, onSkip, onCancel }) {
     setAccepting(true);
     setError(null);
     try {
-      await onAccept({ meta: result.meta, days: result.days });
+      // A designer-proposed mesocycle arrives without a startDate (the server
+      // can't know the user's local calendar) — the block starts the Monday
+      // of the week the plan is accepted.
+      const meta =
+        result.meta?.cycle && !result.meta.cycle.startDate
+          ? { ...result.meta, cycle: { ...result.meta.cycle, startDate: cycleWeekKey(localDateKey()) } }
+          : result.meta;
+      await onAccept({ meta, days: result.days });
     } catch {
       setError("Couldn't save the plan — check your connection and try again.");
       setAccepting(false);
@@ -238,6 +246,11 @@ export default function Onboarding({ mode, onAccept, onSkip, onCancel }) {
         <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: "#9AA1AC", margin: "0 0 8px", lineHeight: 1.5 }}>
           {result.summary}
         </p>
+        {result.meta?.cycle && (
+          <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, color: "#B9A6E0", margin: "0 0 8px" }}>
+            Runs in {result.meta.cycle.lengthWeeks}-week blocks — week {(result.meta.cycle.deloadWeeks || []).join(" and ")} is a planned deload.
+          </p>
+        )}
         <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11.5, color: "#6B7280", marginBottom: 14 }}>
           {video.state === "loading" && "Finding video tutorials…"}
           {video.state === "done" && `Video tutorials linked ✓ (${video.count} of ${video.total})`}

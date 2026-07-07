@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Dumbbell, RotateCcw, BarChart3, Pencil, CloudOff, LogOut, CalendarDays } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { SEED_DAYS, SEED_META, slug, exMetric, metricUnit, dayForDate, finisherSlug, localDateKey, applyPlanChange } from "./planUtils.js";
+import { applyCycleChange, isDeloadDate } from "./cycleUtils.js";
 import { profileSwaps } from "./equipment.js";
 import { useAppState } from "./AppState.jsx";
 import { useHashRoute } from "./useHashRoute.js";
@@ -230,6 +231,14 @@ export default function RackedTracker({ session }) {
     return handleSavePlan(nextDays);
   };
 
+  // Apply a coach cycle_change to plan meta (Phase 15). Meta-only, so it
+  // skips handleSavePlan's swap/travel reset — the days are untouched.
+  const handleApplyCycleChange = (change) => {
+    const nextMeta = applyCycleChange(planMeta, change, today);
+    if (!nextMeta) return Promise.reject(new Error("That block change isn't valid — nothing was applied"));
+    return saveLivePlan(days, nextMeta);
+  };
+
   const resetAll = () => {
     if (!window.confirm || window.confirm("Clear all logged history? This can't be undone.")) {
       setRestEndsAt(null);
@@ -407,7 +416,7 @@ export default function RackedTracker({ session }) {
           </div>
         ) : null}
 
-        {view === "progress" && <ProgressView onApplyPlanChange={handleApplyPlanChange} />}
+        {view === "progress" && <ProgressView onApplyPlanChange={handleApplyPlanChange} onApplyCycleChange={handleApplyCycleChange} />}
 
         {view === "edit" && (
           <PlanEditor
@@ -443,7 +452,7 @@ export default function RackedTracker({ session }) {
         {view === "workout" && (
         <>
         {/* Weekly insight strip — hidden for a brand-new log */}
-        {Object.keys(logs).length > 0 && <InsightStrip days={days} logs={logs} today={today} />}
+        {Object.keys(logs).length > 0 && <InsightStrip days={days} logs={logs} today={today} meta={planMeta} />}
 
         {/* Day selector */}
         <DayTabs days={days} activeDay={activeDay} onSelect={setActiveDay} />
@@ -538,6 +547,28 @@ export default function RackedTracker({ session }) {
           />
         </div>
 
+        {/* Planned deload week (Phase 15): one line so the lighter targets
+            below read as the block working, not the app breaking. */}
+        {isDeloadDate(planMeta?.cycle, viewDate) && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: "#221B2E",
+              border: "1px solid #B9A6E055",
+              borderRadius: 8,
+              padding: "9px 12px",
+              marginBottom: 14,
+              fontFamily: "'Inter', sans-serif",
+              fontSize: 12.5,
+              color: "#D6CCEC",
+            }}
+          >
+            Deload week — targets are ~90% on purpose. Recover; the next block builds from here.
+          </div>
+        )}
+
         {/* Session summary — appears once every set of the day is logged */}
         {dayComplete && (
           <SessionSummary day={day} stats={stats} cardioMin={cardioMin} durationMin={durationMin} totalSets={totalSets} />
@@ -555,6 +586,8 @@ export default function RackedTracker({ session }) {
               primary={base}
               history={history}
               setsDone={setsDoneFor(ex)}
+              cycle={planMeta?.cycle}
+              date={viewDate}
               onLog={(w, r, effort) => handleLog(ex, w, r, effort)}
               onOpenChart={() => navigate(`/exercise/${key}`)}
               onSwap={(altName) => handleSwap(base, altName)}

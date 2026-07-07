@@ -16,11 +16,13 @@ const EFFORTS = [
   { value: 1, label: "brutal", color: "#EF4444" },
 ];
 
-export default function ExerciseCard({ ex, primary, history, setsDone, onLog, onOpenChart, onSwap }) {
+// `cycle` (meta.cycle, may be undefined) + `date` (the session date being
+// logged) make the suggestion strip mesocycle-aware — Phase 15.
+export default function ExerciseCard({ ex, primary, history, setsDone, onLog, onOpenChart, onSwap, cycle, date }) {
   const complete = setsDone >= ex.sets;
   const timeBased = isTimeBased(ex);
   const showWeightBox = timeBased || !isBodyweightEx(ex);
-  const suggestion = computeSuggestion(ex, history);
+  const suggestion = computeSuggestion(ex, history, { cycle, date });
   const suggestedReps = timeBased ? String(ex.sets) : String(targetNumber(ex.reps) ?? "");
   const [weight, setWeight] = useState(suggestion.value);
   const [reps, setReps] = useState(suggestedReps);

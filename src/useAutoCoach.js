@@ -43,7 +43,7 @@ export function useAutoCoach() {
     firedRef.current = true; // one attempt per app session, even on failure
     if (!due) return;
     const recap = buildWeeklyRecap({ days, logs, weighIns, today: due.recapDay, meta: planMeta });
-    requestCoachReview({ recap, days })
+    requestCoachReview({ recap, days, meta: planMeta, today: due.recapDay })
       .then((review) => recordCoachRun({ week_start: due.weekStart, review, applied: {} }))
       .catch(() => {
         // best-effort pre-warm; the manual button still works

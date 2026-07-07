@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { ChevronUp, ChevronDown, Trash2, Plus, Check, Sparkles } from "lucide-react";
-import { CAT_COLOR, PLATE_COLORS, MAX_DAYS } from "./planUtils.js";
+import { ChevronUp, ChevronDown, Trash2, Plus, Check, Sparkles, RefreshCw } from "lucide-react";
+import { CAT_COLOR, PLATE_COLORS, MAX_DAYS, localDateKey } from "./planUtils.js";
+import { normalizeCycle, cycleWeekKey, MIN_BLOCK_WEEKS, MAX_BLOCK_WEEKS } from "./cycleUtils.js";
 
 const CATS = ["Upper", "Lower", "Core"];
 
@@ -109,6 +110,22 @@ export default function PlanEditor({ days, meta, onSave, onClose, onDesign }) {
   const [draft, setDraft] = useState(() => JSON.parse(JSON.stringify(days)));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // Mesocycle (Phase 15): the block editor keeps one deload week as a plain
+  // field; the saved shape is meta.cycle = {lengthWeeks, deloadWeeks: [n],
+  // startDate}. Defaults for first-time enabling: a 4-week block starting
+  // this Monday with week 4 as the deload.
+  const [cycle, setCycle] = useState(() => {
+    const c = normalizeCycle(meta?.cycle);
+    return {
+      on: !!c,
+      lengthWeeks: String(c?.lengthWeeks ?? 4),
+      deloadWeek: String(c ? c.deloadWeeks[c.deloadWeeks.length - 1] : 4),
+      startDate: c?.startDate ?? cycleWeekKey(localDateKey()),
+    };
+  });
+  const draftCycle = cycle.on
+    ? normalizeCycle({ lengthWeeks: Number(cycle.lengthWeeks), deloadWeeks: [Number(cycle.deloadWeek)], startDate: cycle.startDate })
+    : null;
 
   const setDay = (di, day) => setDraft(draft.map((d, i) => (i === di ? day : d)));
   const setEx = (di, ei, ex) => setDay(di, { ...draft[di], exercises: draft[di].exercises.map((e, i) => (i === ei ? ex : e)) });
@@ -154,7 +171,9 @@ export default function PlanEditor({ days, meta, onSave, onClose, onDesign }) {
     setDraft(draft.filter((_, i) => i !== di));
   };
 
-  const valid = draft.every((d) => d.exercises.length > 0 && d.exercises.every((e) => e.name.trim() && Number(e.sets) >= 1));
+  const valid =
+    draft.every((d) => d.exercises.length > 0 && d.exercises.every((e) => e.name.trim() && Number(e.sets) >= 1)) &&
+    (!cycle.on || !!draftCycle);
 
   const save = async () => {
     if (!valid || saving) return;
@@ -166,7 +185,14 @@ export default function PlanEditor({ days, meta, onSave, onClose, onDesign }) {
       label: `Day ${i + 1}`,
       exercises: d.exercises.map((e) => ({ ...e, sets: Number(e.sets), name: e.name.trim() })),
     }));
-    const nextMeta = cleaned.length !== meta?.daysPerWeek ? { ...meta, daysPerWeek: cleaned.length } : meta;
+    let nextMeta = cleaned.length !== meta?.daysPerWeek ? { ...meta, daysPerWeek: cleaned.length } : meta;
+    // Cycle edits follow through to meta; an untouched cycle leaves meta as-is.
+    if (cycle.on && JSON.stringify(draftCycle) !== JSON.stringify(normalizeCycle(meta?.cycle))) {
+      nextMeta = { ...nextMeta, cycle: draftCycle };
+    } else if (!cycle.on && meta?.cycle) {
+      nextMeta = { ...nextMeta };
+      delete nextMeta.cycle;
+    }
     setSaving(true);
     try {
       await onSave(cleaned, nextMeta);
@@ -269,6 +295,70 @@ export default function PlanEditor({ days, meta, onSave, onClose, onDesign }) {
       <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, color: "#6B7280", margin: "6px 0 18px", textAlign: "center" }}>
         Replaces your current plan — history is kept.
       </p>
+
+      {/* Mesocycle (Phase 15): repeating blocks with a planned deload week */}
+      <div style={{ background: "#1B1E22", border: "1px solid #2A2E33", borderRadius: 10, padding: "12px 12px 10px", marginBottom: 22 }}>
+        <button
+          type="button"
+          onClick={() => setCycle({ ...cycle, on: !cycle.on })}
+          style={{ display: "flex", alignItems: "center", gap: 8, background: "transparent", border: "none", padding: 0, cursor: "pointer", width: "100%" }}
+        >
+          <span
+            style={{
+              width: 15,
+              height: 15,
+              borderRadius: 4,
+              border: cycle.on ? "1px solid #B9A6E0" : "1px solid #3A3F46",
+              background: cycle.on ? "#221B2E" : "transparent",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            {cycle.on && <Check size={11} color="#B9A6E0" />}
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: "'Inter', sans-serif", fontSize: 13, fontWeight: 600, color: "#F5F6F7" }}>
+            <RefreshCw size={13} color="#B9A6E0" />
+            Train in blocks (mesocycle)
+          </span>
+        </button>
+        <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, color: "#6B7280", margin: "6px 0 0 23px" }}>
+          Repeats a fixed-length block; the deload week suggests ~90% loads and never counts toward the automatic deload.
+        </p>
+        {cycle.on && (
+          <div style={{ display: "flex", gap: 8, marginTop: 10, marginLeft: 23, flexWrap: "wrap" }}>
+            <Field
+              label={`Block length (${MIN_BLOCK_WEEKS}–${MAX_BLOCK_WEEKS} wks)`}
+              value={cycle.lengthWeeks}
+              onChange={(v) => setCycle({ ...cycle, lengthWeeks: v })}
+              width={110}
+              inputMode="numeric"
+            />
+            <Field
+              label="Deload on week"
+              value={cycle.deloadWeek}
+              onChange={(v) => setCycle({ ...cycle, deloadWeek: v })}
+              width={100}
+              inputMode="numeric"
+            />
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={labelStyle}>Block started (Mon)</label>
+              <input
+                type="date"
+                value={cycle.startDate}
+                onChange={(e) => setCycle({ ...cycle, startDate: e.target.value })}
+                style={{ ...inputStyle, colorScheme: "dark" }}
+              />
+            </div>
+          </div>
+        )}
+        {cycle.on && !draftCycle && (
+          <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, color: "#F5B4B4", margin: "8px 0 0 23px" }}>
+            Check the block settings — length {MIN_BLOCK_WEEKS}–{MAX_BLOCK_WEEKS} weeks, the deload week inside the block, and a start date.
+          </p>
+        )}
+      </div>
 
       {draft.map((day, di) => (
         <div key={day.id} style={{ marginBottom: 22 }}>

@@ -1,5 +1,6 @@
 import { slug, isTimeBased, isBodyweightEx, buildDayIndex, finisherSlug } from "./planUtils.js";
 import { computeSuggestion, targetNumber } from "./progression.js";
+import { cycleStatus, cycleStatusLabel } from "./cycleUtils.js";
 
 // ---- Tier 1 AI coach: build a paste-ready weekly recap ----
 // Turns the week's raw logs into a compact text block that reads well in the
@@ -81,7 +82,7 @@ function weekVolume(logs, index, from, to) {
 // (the insight strip) rather than as paste-for-Claude text. Shares
 // exerciseIndex/weekVolume with buildWeeklyRecap so there's one source of
 // truth for what counts as a session and as lifting volume.
-export function buildWeeklyInsights({ days, logs, today }) {
+export function buildWeeklyInsights({ days, logs, today, meta }) {
   const start = weekStart(today);
   const prevStart = shiftDays(start, -7);
   const prevEnd = shiftDays(start, -1);
@@ -97,13 +98,16 @@ export function buildWeeklyInsights({ days, logs, today }) {
 
   // Stall flags: any lift whose next-session suggestion is a deload (or is
   // heading for one). Scans full history, not just this week — a stall from
-  // last session still deserves the callout.
+  // last session still deserves the callout. Cycle-aware (Phase 15): during
+  // a planned deload week nothing reads as a stall, and past deload sessions
+  // never count as misses.
+  const suggestOpts = { cycle: meta?.cycle, date: today };
   const stalls = [];
   for (const [key, entries] of Object.entries(logs)) {
     if (key.startsWith("finisher-")) continue;
     const def = index[key]?.ex;
     if (!def || entries.length === 0) continue;
-    const suggestion = computeSuggestion(def, entries);
+    const suggestion = computeSuggestion(def, entries, suggestOpts);
     if (suggestion.trend === "down") stalls.push({ name: def.name, detail: suggestion.detail });
   }
 
@@ -114,6 +118,7 @@ export function buildWeeklyInsights({ days, logs, today }) {
     volume: weekVolume(logs, index, start, today),
     prevVolume: weekVolume(logs, index, prevStart, prevEnd),
     stalls,
+    cycle: cycleStatus(meta?.cycle, today),
   };
 }
 
@@ -160,6 +165,7 @@ export function buildWeeklyRecap({ days, logs, weighIns, today, meta }) {
   const baseline = [...sortedWeighIns].reverse().find((w) => w.date < start);
 
   // ---- per-lift detail ----
+  const suggestOpts = { cycle: meta?.cycle, date: today };
   const liftLines = [];
   for (const [key, entries] of Object.entries(logs)) {
     if (key.startsWith("finisher-")) continue;
@@ -176,7 +182,7 @@ export function buildWeeklyRecap({ days, logs, weighIns, today, meta }) {
     const lastSet = weekEntries[weekEntries.length - 1];
     const hit = target == null || (isTimeBased(def) ? parseFloat(lastSet.weight) || 0 : parseFloat(lastSet.reps) || 0) >= target;
     const efforts = [...new Set(weekEntries.map((e) => EFFORT_WORD[e.effort]).filter(Boolean))];
-    const suggestion = index[key] ? computeSuggestion(def, entries) : null;
+    const suggestion = index[key] ? computeSuggestion(def, entries, suggestOpts) : null;
     const parts = [
       `${def.name} (${def.cat} · target ${def.sets}×${def.reps}): ${sessions}`,
       hit ? "hit target" : "under target",
@@ -194,10 +200,18 @@ export function buildWeeklyRecap({ days, logs, weighIns, today, meta }) {
     `WEEK OF ${fmtDate(start)} – ${fmtDate(today)}`,
     "",
     `Program: ${meta?.description ?? `${days.length}-day plan`}`,
+  ];
+  // Mesocycle position (Phase 15) — only when a cycle is configured, so
+  // pre-cycle accounts keep the exact recap text they've always had.
+  const blockLabel = cycleStatusLabel(cycleStatus(meta?.cycle, today));
+  if (blockLabel) {
+    lines.push(`Block: ${blockLabel} (planned deload weeks run ~90% loads and don't count as misses)`);
+  }
+  lines.push(
     "Progression rules the app follows: +5 lb upper / +10 lb lower at rep target, +5-10 sec on core holds, 10% deload after 2 straight misses; a hit rated \"brutal\" holds the weight and counts a half-miss, an \"easy\" hit doubles the lower-body jump.",
     "",
-    `Sessions: ${sessionDates.length} of ${days.length} planned${sessionLines.length ? ` — ${sessionLines.join(", ")}` : ""}`,
-  ];
+    `Sessions: ${sessionDates.length} of ${days.length} planned${sessionLines.length ? ` — ${sessionLines.join(", ")}` : ""}`
+  );
   if (missed.length && sessionDates.length < days.length) lines.push(`Not yet trained this week: ${missed.join(", ")}`);
   lines.push(
     `Cardio finishers: ${finisherCount} done, ${finisherMin} min total${finisherModes.size ? ` (${[...finisherModes].join(", ")})` : ""}`
