@@ -7,6 +7,7 @@ import { useAppState } from "./AppState.jsx";
 import { useHashRoute } from "./useHashRoute.js";
 import { useAutoCoach } from "./useAutoCoach.js";
 import { pushEnabled, scheduleRestPush } from "./push.js";
+import { buddyLinked, sendBuddyDonePush } from "./buddy.js";
 import { FONTS_IMPORT } from "./ui.jsx";
 import DayTabs from "./DayTabs.jsx";
 import TravelToggle from "./TravelToggle.jsx";
@@ -63,6 +64,7 @@ export default function RackedTracker({ session }) {
   const sessionStartRef = useRef(null); // first set logged in this app session
   const prToastTimerRef = useRef(null);
   const didInitRef = useRef(false);
+  const buddyNotifiedRef = useRef(null); // "date:dayId" of the last buddy-done nudge sent
 
   useEffect(() => () => clearTimeout(prToastTimerRef.current), []);
 
@@ -251,6 +253,18 @@ export default function RackedTracker({ session }) {
     dayComplete && !backfilling && sessionStartRef.current
       ? Math.max(1, Math.round((Date.now() - sessionStartRef.current) / 60000))
       : null;
+
+  // Buddy nudge (Phase 14): announce a completed session to the linked buddy
+  // through push-send, once per day+plan-day. sessionStartRef gates it to
+  // sessions finished in *this* app session — reopening an already-complete
+  // day (or backfilling one) announces nothing; the moment has passed.
+  useEffect(() => {
+    if (!dayComplete || backfilling || !sessionStartRef.current) return;
+    const key = `${viewDate}:${day.id}`;
+    if (buddyNotifiedRef.current === key) return;
+    buddyNotifiedRef.current = key;
+    if (buddyLinked()) sendBuddyDonePush(day.name);
+  }, [dayComplete, backfilling, viewDate, day.id, day.name]);
 
   if (!loaded) {
     return (
