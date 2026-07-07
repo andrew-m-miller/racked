@@ -1,14 +1,16 @@
 import React, { useMemo } from "react";
 import { TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
 import { buildWeeklyInsights } from "./recap.js";
+import { cycleStatusLabel } from "./cycleUtils.js";
 
 // Compact this-week panel on the workout view: the numbers the recap already
 // computes (sessions vs planned, volume + week-over-week delta, days not yet
 // trained) plus stall flags from the progression engine, rendered in-app
-// instead of only leaving as paste-for-Claude text.
-export default function InsightStrip({ days, logs, today }) {
-  const insights = useMemo(() => buildWeeklyInsights({ days, logs, today }), [days, logs, today]);
-  const { sessionsDone, sessionsPlanned, missedDays, volume, prevVolume, stalls } = insights;
+// instead of only leaving as paste-for-Claude text. With a mesocycle
+// configured (meta.cycle, Phase 15) it also carries the week-in-block line.
+export default function InsightStrip({ days, logs, today, meta }) {
+  const insights = useMemo(() => buildWeeklyInsights({ days, logs, today, meta }), [days, logs, today, meta]);
+  const { sessionsDone, sessionsPlanned, missedDays, volume, prevVolume, stalls, cycle } = insights;
 
   const deltaPct = prevVolume > 0 ? Math.round(((volume - prevVolume) / prevVolume) * 100) : null;
 
@@ -49,6 +51,19 @@ export default function InsightStrip({ days, logs, today }) {
           )}
         </span>
       </div>
+
+      {cycle && (
+        <div
+          style={{
+            marginTop: 6,
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 11,
+            color: cycle.deload ? "#B9A6E0" : "#6B7280",
+          }}
+        >
+          {cycleStatusLabel(cycle)}
+        </div>
+      )}
 
       {missedDays.length > 0 && sessionsDone < sessionsPlanned && (
         <div style={{ marginTop: 6, fontFamily: "'Inter', sans-serif", fontSize: 11.5, color: "#9AA1AC" }}>

@@ -212,12 +212,19 @@ Deno.serve(async (req) => {
       })),
     }));
 
-    const meta = {
+    const meta: Record<string, unknown> = {
       goal,
       daysPerWeek,
       experience,
       description: `${daysPerWeek}-day plan, ${daysPerWeek} sessions/week + cardio finisher each session. Goal: ${GOAL_LABEL[goal]}.`,
     };
+    // Experienced lifters get a proposed mesocycle (Phase 15): 4-week block,
+    // week 4 the planned deload. startDate is deliberately absent — log dates
+    // are client-local, so the app stamps its own Monday on accept; until
+    // then the cycle is inert (every read site requires a valid startDate).
+    if (experience === "experienced") {
+      meta.cycle = { lengthWeeks: 4, deloadWeeks: [4] };
+    }
 
     return Response.json({ summary: plan.summary, meta, days }, { headers: CORS });
   } catch (err) {

@@ -59,3 +59,30 @@ today.
 ## Dependency
 - The progression engine and its test suite (Phases 3/6, shipped); the coach
   apply/undo path (Phase 9, shipped).
+
+## As shipped (July 2026)
+
+Built as designed, with these concretizations and one deliberate divergence:
+
+- `computeSuggestion` takes `{cycle, date}` rather than the bare week-in-block
+  number the doc sketched: excluding *past* deload-week sessions from the miss
+  count needs per-date classification, not just today's position. The cycle
+  math lives in a new tested pure module, `src/cycleUtils.js` (normalize /
+  weekInBlock / isDeloadDate / cycleStatus / applyCycleChange), and callers
+  that pass nothing get pre-15 behavior byte-for-byte.
+- The deload target anchors to the heavier of the last two sessions, not the
+  last entry — otherwise the first lighter set logged in the deload week would
+  compound the 90% cut on every input refill.
+- The coach's `cycle_change` is `{lengthWeeks, deloadWeeks, startDate}` with
+  nulls meaning "keep"; undo restores the *whole* previous cycle (including
+  its absence) via `coachUtils.inverseCycleChange`'s `{cycle: …}` shape, since
+  a cycle_change can create the block from nothing. The client sends its local
+  date alongside the recap so the function can name real Mondays for
+  `startDate` — log dates are client-local.
+- The plan designer's proposal is assembled server-side (deterministically,
+  like ids/plates) for `experience === "experienced"`: a 4-week block, week 4
+  deload, shipped *without* `startDate`; the app stamps its own local Monday
+  on accept, and until then the cycle is inert.
+- The recap's block line only appears when a cycle is configured, so the
+  snapshot (and every pre-15 user's paste block) stayed unchanged — the
+  intentional-snapshot-update the doc predicted turned out unnecessary.

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { inversePlanChange, pendingAutoReview, weekLabel, upsertRun } from "./coachUtils.js";
+import { inversePlanChange, inverseCycleChange, pendingAutoReview, weekLabel, upsertRun } from "./coachUtils.js";
+import { applyCycleChange } from "./cycleUtils.js";
 import { weekStart, shiftDays } from "./recap.js";
 
 // Fixed "today": Saturday 2026-07-04 → current week starts Mon 2026-06-29,
@@ -67,6 +68,27 @@ describe("inversePlanChange", () => {
 
   it("matches primaries only, not alts (same rule as the apply path)", () => {
     expect(inversePlanChange(DAYS, { exercise: "DB Bench Press", sets: 4, reps: null })).toBeNull();
+  });
+});
+
+describe("inverseCycleChange", () => {
+  const CYCLE = { lengthWeeks: 4, deloadWeeks: [4], startDate: "2026-06-01" };
+
+  it("captures the whole previous cycle for a full restore", () => {
+    expect(inverseCycleChange({ daysPerWeek: 3, cycle: CYCLE })).toEqual({ cycle: CYCLE });
+  });
+
+  it("captures the absence of a cycle so undoing a creation removes it", () => {
+    expect(inverseCycleChange({ daysPerWeek: 3 })).toEqual({ cycle: null });
+    expect(inverseCycleChange(undefined)).toEqual({ cycle: null });
+  });
+
+  it("round-trips through applyCycleChange: apply, undo, back to the original meta", () => {
+    const meta = { daysPerWeek: 3 };
+    const inverse = inverseCycleChange(meta);
+    const applied = applyCycleChange(meta, { lengthWeeks: 4, deloadWeeks: [4], startDate: "2026-06-01" }, "2026-07-04");
+    expect(applied.cycle).toEqual(CYCLE);
+    expect(applyCycleChange(applied, inverse)).toEqual(meta);
   });
 });
 

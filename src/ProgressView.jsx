@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Scale, Flame, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { buildDayIndex, localDateKey } from "./planUtils.js";
+import { isDeloadDate, normalizeCycle } from "./cycleUtils.js";
 import { useAppState } from "./AppState.jsx";
 import { StatBlock, SectionTitle, ghostBtn } from "./ui.jsx";
 import { LineChart } from "./charts.jsx";
@@ -265,6 +266,9 @@ function CalendarSection({ days, logs, today, meta }) {
             const dayId = dayByDate.get(key);
             const fill = dayId ? plate[dayId] : null;
             const isToday = key === today;
+            // Planned deload weeks (Phase 15) get a faint tint so the block
+            // rhythm is visible at a glance; a trained day's plate color wins.
+            const deload = isDeloadDate(meta?.cycle, key);
             return (
               <div key={key} style={{ display: "flex", justifyContent: "center" }}>
                 <div
@@ -277,9 +281,9 @@ function CalendarSection({ days, logs, today, meta }) {
                     justifyContent: "center",
                     fontFamily: "'JetBrains Mono', monospace",
                     fontSize: 11,
-                    color: fill ? "#101214" : "#6B7280",
+                    color: fill ? "#101214" : deload ? "#B9A6E0" : "#6B7280",
                     fontWeight: fill ? 700 : 400,
-                    background: fill || "transparent",
+                    background: fill || (deload ? "#B9A6E01C" : "transparent"),
                     border: isToday ? "1.5px solid #F5F6F7" : "1.5px solid transparent",
                   }}
                 >
@@ -290,13 +294,19 @@ function CalendarSection({ days, logs, today, meta }) {
           })}
         </div>
 
-        <div style={{ display: "flex", gap: 14, justifyContent: "center", marginTop: 12 }}>
+        <div style={{ display: "flex", gap: 14, justifyContent: "center", marginTop: 12, flexWrap: "wrap" }}>
           {days.map((d) => (
             <span key={d.id} style={{ display: "flex", alignItems: "center", gap: 5, fontFamily: "'Inter', sans-serif", fontSize: 11, color: "#9AA1AC" }}>
               <span style={{ width: 9, height: 9, borderRadius: "50%", background: d.plate, display: "inline-block" }} />
               {d.name}
             </span>
           ))}
+          {normalizeCycle(meta?.cycle) && (
+            <span style={{ display: "flex", alignItems: "center", gap: 5, fontFamily: "'Inter', sans-serif", fontSize: 11, color: "#9AA1AC" }}>
+              <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#B9A6E01C", border: "1px solid #B9A6E055", display: "inline-block", boxSizing: "border-box" }} />
+              deload week
+            </span>
+          )}
         </div>
       </div>
     </div>
@@ -360,7 +370,7 @@ function ExportSection({ days, logs, weighIns, today, meta }) {
   );
 }
 
-export default function ProgressView({ onApplyPlanChange }) {
+export default function ProgressView({ onApplyPlanChange, onApplyCycleChange }) {
   const { days, logs, weighIns, planMeta: meta, coachRuns, recordCoachRun, logWeighIn } = useAppState();
   const today = localDateKey();
   const onAddWeighIn = (weightLb) => logWeighIn(today, weightLb);
@@ -378,6 +388,7 @@ export default function ProgressView({ onApplyPlanChange }) {
         coachRuns={coachRuns}
         onRecordRun={recordCoachRun}
         onApplyPlanChange={onApplyPlanChange}
+        onApplyCycleChange={onApplyCycleChange}
       />
       <HealthSection />
       <ExportSection days={days} logs={logs} weighIns={weighIns} today={today} meta={meta} />

@@ -169,6 +169,33 @@ describe("buildWeeklyRecap full snapshot", () => {
   });
 });
 
+describe("buildWeeklyRecap mesocycle line (Phase 15)", () => {
+  // 4-week block from Mon 2026-06-08: TODAY (2026-07-04) falls in week 4,
+  // the planned deload.
+  const cycle = { lengthWeeks: 4, deloadWeeks: [4], startDate: "2026-06-08" };
+
+  it("adds a Block line when a cycle is configured", () => {
+    const days = volumeDays();
+    const recap = buildWeeklyRecap({ days, logs: {}, weighIns: [], today: TODAY, meta: { description: "test plan", cycle } });
+    expect(recap).toMatch("Block: Week 4 of 4 — deload week (planned deload weeks run ~90% loads and don't count as misses)");
+  });
+
+  it("omits the Block line without a cycle (pre-15 recap text unchanged)", () => {
+    const days = volumeDays();
+    const recap = buildWeeklyRecap({ days, logs: {}, weighIns: [], today: TODAY, meta: { description: "test plan" } });
+    expect(recap).not.toMatch("Block:");
+  });
+
+  it("marks a deload-week lift suggestion as the planned deload, not a stall", () => {
+    const days = volumeDays();
+    const logs = {
+      "bench-press": [{ date: "2026-06-30", weight: "95", reps: "10", effort: 0 }],
+    };
+    const recap = buildWeeklyRecap({ days, logs, weighIns: [], today: TODAY, meta: { description: "test plan", cycle } });
+    expect(recap).toMatch("app suggests: Deload week — 85 lb");
+  });
+});
+
 describe("buildWeeklyRecap edge cases", () => {
   it("reports no lifts logged when only a finisher was done this week", () => {
     const days = volumeDays();
@@ -238,6 +265,25 @@ describe("buildWeeklyInsights", () => {
     const insights = buildWeeklyInsights({ days, logs, today: TODAY });
     expect(insights.volume).toBe(950);
     expect(insights.prevVolume).toBe(720);
+  });
+
+  it("returns the cycle status and suppresses stall flags during a planned deload week (Phase 15)", () => {
+    // TODAY (2026-07-04) is week 4 — the deload — of a block from Mon 2026-06-08.
+    const cycle = { lengthWeeks: 4, deloadWeeks: [4], startDate: "2026-06-08" };
+    const days = volumeDays();
+    const logs = {
+      "bench-press": [
+        { date: "2026-06-20", weight: "95", reps: "8", effort: null }, // miss
+        { date: "2026-06-27", weight: "95", reps: "9", effort: null }, // miss — a stall without the cycle
+      ],
+    };
+    const withCycle = buildWeeklyInsights({ days, logs, today: TODAY, meta: { cycle } });
+    expect(withCycle.cycle).toEqual({ week: 4, lengthWeeks: 4, deload: true, weeksToDeload: 0 });
+    expect(withCycle.stalls).toEqual([]);
+
+    const without = buildWeeklyInsights({ days, logs, today: TODAY });
+    expect(without.cycle).toBeNull();
+    expect(without.stalls.map((s) => s.name)).toContain("Bench Press");
   });
 
   it("flags a lift with 2 consecutive under-target sessions as a stall, and leaves a healthy lift out", () => {

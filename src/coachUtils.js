@@ -26,6 +26,15 @@ export function inversePlanChange(days, change) {
   return null;
 }
 
+// The cycle_change that would revert one, captured from meta as it stands
+// *before* the change is applied (Phase 15). Unlike plan changes, a cycle
+// change can create the block structure from nothing, so the inverse is a
+// full restore: {cycle: <previous cycle>} — or {cycle: null}, which
+// applyCycleChange reads as "remove it again".
+export function inverseCycleChange(meta) {
+  return { cycle: meta?.cycle ?? null };
+}
+
 // Should the weekly auto-run fire? Reviews the *completed* week (Mon–Sun
 // before today's week), like the roadmap's Sunday-night cron would — running
 // on the current week Monday morning would review an empty week. Returns

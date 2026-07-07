@@ -248,6 +248,85 @@ describe("computeSuggestion — effort modifiers", () => {
   });
 });
 
+describe("computeSuggestion — mesocycle (Phase 15)", () => {
+  // 4-week block from Mon 2026-06-01, week 4 (Jun 22–28) the planned deload;
+  // the next repeat's weeks 1/4 are Jun 29–Jul 5 / Jul 20–26.
+  const cycle = { lengthWeeks: 4, deloadWeeks: [4], startDate: "2026-06-01" };
+
+  it("suggests ~90% of the working weight during a planned deload week", () => {
+    const history = [{ weight: 50, reps: 12, effort: null, date: "2026-06-17" }];
+    const s = computeSuggestion(upperWeighted, history, { cycle, date: "2026-06-23" });
+    expect(s.text).toBe("Deload week — 45 lb");
+    expect(s.value).toBe("45");
+    expect(s.trend).toBe("flat");
+    expect(s.detail).toBe("Planned deload — lighter on purpose");
+  });
+
+  it("keeps the deload target anchored to the working weight after the week's first lighter set", () => {
+    // The heavier of the last two sessions is the baseline, so recomputing
+    // mid-deload-week can't compound 90% of 90%.
+    const history = [
+      { weight: 50, reps: 12, effort: null, date: "2026-06-17" },
+      { weight: 45, reps: 12, effort: null, date: "2026-06-23" }, // first deload set
+    ];
+    const s = computeSuggestion(upperWeighted, history, { cycle, date: "2026-06-23" });
+    expect(s.value).toBe("45");
+  });
+
+  it("suggests a shorter hold for timed core moves and easy reps for bodyweight moves", () => {
+    const holds = [{ weight: 50, reps: 1, effort: null, date: "2026-06-17" }];
+    const hold = computeSuggestion(timedCore, holds, { cycle, date: "2026-06-23" });
+    expect(hold.text).toBe("Deload week — hold ~45 sec");
+    expect(hold.trend).toBe("flat");
+
+    const reps = [{ weight: 0, reps: 12, effort: null, date: "2026-06-17" }];
+    const bw = computeSuggestion(bodyweightRep, reps, { cycle, date: "2026-06-23" });
+    expect(bw.text).toBe("Deload week — stop a couple reps short");
+    expect(bw.value).toBe("");
+    expect(bw.trend).toBe("flat");
+  });
+
+  it("excludes planned-deload sessions from the reactive miss count", () => {
+    // Miss in week 3, miss during the week-4 deload, now week 1 of the next
+    // block: only the week-3 miss counts, so no reactive deload fires…
+    const history = [
+      { weight: 30, reps: 9, effort: null, date: "2026-06-17" },
+      { weight: 27.5, reps: 9, effort: null, date: "2026-06-24" }, // planned deload session
+    ];
+    const s = computeSuggestion(upperWeighted, history, { cycle, date: "2026-06-30" });
+    expect(s.trend).toBe("flat");
+    expect(s.text).toBe("Hold at 27.5 lb");
+
+    // …while the identical history with no cycle still deloads reactively.
+    const noCycle = computeSuggestion(upperWeighted, history);
+    expect(noCycle.trend).toBe("down");
+  });
+
+  it("still counts a stall that straddles the deload week — deload sessions are skipped, not scan breakers", () => {
+    const history = [
+      { weight: 30, reps: 9, effort: null, date: "2026-06-10" }, // week 2 miss
+      { weight: 30, reps: 9, effort: null, date: "2026-06-17" }, // week 3 miss
+      { weight: 27.5, reps: 12, effort: null, date: "2026-06-24" }, // planned deload hit — neutral
+    ];
+    const s = computeSuggestion(upperWeighted, history, { cycle, date: "2026-06-30" });
+    expect(s.trend).toBe("down");
+    expect(s.text.startsWith("Deload to")).toBe(true);
+  });
+
+  it("keeps normal progression on accumulation weeks and without opts", () => {
+    const history = [{ weight: 30, reps: 12, effort: null, date: "2026-06-10" }];
+    const accum = computeSuggestion(upperWeighted, history, { cycle, date: "2026-06-16" });
+    expect(accum.text).toBe("Try 35 lb");
+    const bare = computeSuggestion(upperWeighted, history);
+    expect(bare.text).toBe("Try 35 lb");
+  });
+
+  it("falls back to the start suggestion on a deload week with no history", () => {
+    const s = computeSuggestion(upperWeighted, [], { cycle, date: "2026-06-23" });
+    expect(s.text.startsWith("Start:")).toBe(true);
+  });
+});
+
 describe("computeSuggestion — timed/bodyweight never deload", () => {
   it("a timed hold with 2 misses in a row still returns a flat 'hold again' suggestion, never a deload", () => {
     const history = [

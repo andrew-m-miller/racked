@@ -245,4 +245,25 @@ describe("ExerciseCard", () => {
     );
     expect(screen.queryByLabelText(`Progress chart for ${ex.name}`)).toBeNull();
   });
+
+  it("shows the planned-deload suggestion and prefills ~90% weight during a deload week (Phase 15)", () => {
+    const ex = makeEx();
+    // 4-week block from Mon 2026-06-01: 2026-06-23 falls in week 4, the deload.
+    const cycle = { lengthWeeks: 4, deloadWeeks: [4], startDate: "2026-06-01" };
+    render(
+      <ExerciseCard
+        ex={ex}
+        primary={ex}
+        history={[{ date: "2026-06-17", weight: "125", reps: "10", effort: null }]}
+        setsDone={0}
+        cycle={cycle}
+        date="2026-06-23"
+        onLog={() => {}}
+        onOpenChart={() => {}}
+        onSwap={() => {}}
+      />
+    );
+    expect(screen.getByText("Deload week — 112.5 lb")).toBeTruthy();
+    expect(screen.getByPlaceholderText("lb").value).toBe("112.5");
+  });
 });

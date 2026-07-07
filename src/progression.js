@@ -1,4 +1,5 @@
 import { isTimeBased, isBodyweightEx } from "./planUtils.js";
+import { isDeloadDate } from "./cycleUtils.js";
 
 // ---- Progression engine ----
 // Extracted from RackedTracker.jsx so the weekly recap can reuse the same
@@ -20,7 +21,11 @@ export function startNumber(startStr) {
 
 export const INCREMENT = { Upper: 5, Lower: 10, Core: 5 }; // lb, lb, seconds
 
-export function computeSuggestion(ex, history) {
+// `opts.cycle` + `opts.date` (the session date being planned) opt into
+// mesocycle awareness (Phase 15): a planned deload week suggests reduced
+// targets, and past deload-week sessions never count toward the reactive
+// deload. Omitting them keeps pre-cycle behavior byte-for-byte.
+export function computeSuggestion(ex, history, opts = {}) {
   const isBodyweight = isBodyweightEx(ex);
   const timeBased = isTimeBased(ex);
   const target = targetNumber(ex.reps);
@@ -44,6 +49,26 @@ export function computeSuggestion(ex, history) {
   const lastPrimary = timeBased ? lastWeight : lastReps;
   const hitTarget = target ? lastPrimary >= target : true;
   const lastEffort = last.effort == null ? null : Number(last.effort); // -1 easy · 0 right · 1 brutal
+
+  // Planned deload week: suggest ~90% of the working weight at the existing
+  // rep range. The baseline is the heaviest of the last two sessions, not
+  // just the last entry — once the week's first lighter set is logged, a
+  // last-entry read would compound the cut on every recompute.
+  if (isDeloadDate(opts.cycle, opts.date)) {
+    const lastByDate = new Map();
+    for (const e of history) lastByDate.set(e.date, e);
+    const recent = [...lastByDate.values()].slice(-2);
+    const working = Math.max(...recent.map((e) => parseFloat(e.weight) || 0));
+    if (timeBased) {
+      const hold = Math.max(5, Math.round((working * 0.9) / 5) * 5);
+      return { text: `Deload week — hold ~${hold} sec`, value: String(hold), trend: "flat", detail: "Planned deload — lighter on purpose" };
+    }
+    if (isBodyweight) {
+      return { text: "Deload week — stop a couple reps short", value: "", trend: "flat", detail: "Planned deload — lighter on purpose" };
+    }
+    const deload = Math.round((working * 0.9) / 2.5) * 2.5;
+    return { text: `Deload week — ${deload} lb`, value: String(deload), trend: "flat", detail: "Planned deload — lighter on purpose" };
+  }
 
   if (timeBased) {
     const inc = INCREMENT[ex.cat] || 5;
@@ -82,6 +107,10 @@ export function computeSuggestion(ex, history) {
   const sessions = [...lastSetByDate.values()];
   let missScore = 0;
   for (let i = sessions.length - 1; i >= 0; i--) {
+    // Planned deload sessions are neutral: excluded from the miss count (a
+    // programmed light week can never trigger the reactive deload) but they
+    // don't break the scan either — a stall straddling a deload still counts.
+    if (isDeloadDate(opts.cycle, sessions[i].date)) continue;
     const v = parseFloat(sessions[i].reps) || 0;
     if (v < (target || 0)) missScore += 1;
     else if (Number(sessions[i].effort) === 1) missScore += 0.5;
