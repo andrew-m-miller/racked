@@ -340,6 +340,47 @@ export async function deleteSyncToken() {
   if (error) throw error;
 }
 
+// ---- buddy pairing (Phase 14) ----
+
+// One mintable invite code per user (buddy_codes, the sync_tokens pattern):
+// the app mints/revokes its own row here; the buddy-status edge function
+// resolves someone else's code with the service role at redeem time, creates
+// the buddy_links row, and consumes the code. All three fail hard if the
+// Phase 14 migration hasn't run — the setup UI catches and points at the
+// README, same as the health-sync token.
+export async function loadBuddyCode() {
+  const { data, error } = await supabase.from("buddy_codes").select("code").maybeSingle();
+  if (error) throw error;
+  return data?.code ?? null;
+}
+
+export async function saveBuddyCode(code) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not signed in");
+  const { error } = await supabase
+    .from("buddy_codes")
+    .upsert({ user_id: session.user.id, code }, { onConflict: "user_id" });
+  if (error) throw error;
+}
+
+export async function deleteBuddyCode() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not signed in");
+  const { error } = await supabase.from("buddy_codes").delete().eq("user_id", session.user.id);
+  if (error) throw error;
+}
+
+// Unlink is deliberately client-side: RLS lets either side delete the
+// buddy_links row they're part of, and deleting the row *is* the unlink —
+// no server round-trip through buddy-status needed.
+export async function unlinkBuddy() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not signed in");
+  const uid = session.user.id;
+  const { error } = await supabase.from("buddy_links").delete().or(`user_a.eq.${uid},user_b.eq.${uid}`);
+  if (error) throw error;
+}
+
 // ---- push subscriptions (Phase 10) ----
 
 // One row per browser/device push subscription (endpoint is globally unique,

@@ -59,3 +59,30 @@ the deployment shareable; this is the first feature that uses it.
 ## Dependency
 - Push infrastructure (Phase 10, shipped); invite-only deployment + quota
   plumbing (Phase 11, shipped).
+
+## As shipped (July 2026)
+
+Built as designed, with these concretizations:
+
+- The "code column or tiny table" question resolved to the tiny table:
+  `buddy_codes` (user_id pk, code unique), the `sync_tokens` pattern exactly.
+  Codes are human-typed — 8 chars, `XXXX-XXXX`, an alphabet without 0/O/1/I/L
+  — single-use, and consumed (both sides' pending codes) on redeem.
+- The sharing contract lives in one `buddy-status` edge function (status +
+  redeem). Mint and unlink stayed client-side RLS writes: `buddy_codes` is
+  own-rows, and either member may delete the `buddy_links` row — deleting
+  *is* the unlink. Links store `user_a < user_b`; per-column unique indexes
+  enforce one-buddy-per-user against redeem races.
+- "Whether today's workout is done" is computed server-side from set *counts*
+  vs the buddy's plan (day chosen by the same majority-vote rule as
+  `planUtils.buildDayIndex`, completion = every slot at its set count + the
+  finisher) — so the card can honestly say "Finished Push day ✓" while still
+  sharing no numbers. Callers pass their local date; log dates are
+  client-local.
+- The finished-session push fires from `RackedTracker` only when a *live*
+  session completes (never on reopen or backfill), gated by a localStorage
+  linked flag so logging never awaits a lookup. The combo-streak line rides
+  the existing Sunday cron payload per-user; a missing `buddy_links` table
+  degrades to the plain nudge.
+- Display names are the email local part — the app has no profile concept,
+  and inventing one for this was scope creep.

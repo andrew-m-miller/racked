@@ -11,10 +11,9 @@ earlier ones rather than assuming a hard cutoff — the doc for a shipped phase
 also records where the implementation deliberately diverged from the plan
 (e.g. Phase 9's server cron shipping as a client-side auto-run).
 
-**Current state:** phases 1–13 plus the AI-coach stretch are shipped.
-Phases 14–15 are written and unbuilt — numbered in intended build order
-(14 completes the consistency pair with 13, 15 is the largest design lift).
-When one ships, move its row to the Shipped table and update anything it
+**Current state:** phases 1–14 plus the AI-coach stretch are shipped.
+Phase 15 is written and unbuilt — the largest design lift on the list.
+When it ships, move its row to the Shipped table and update anything it
 makes stale in `CLAUDE.md`.
 
 ## Shipped
@@ -35,10 +34,10 @@ makes stale in `CLAUDE.md`.
 | 11 | [Hardening & sharing readiness](phase-11-hardening-and-sharing.md) | Bug fixes from the July 2026 full-codebase review, invite-only sign-ups + per-user AI quotas for sharing the deployment, one-pass log date index, shared UI module, ESLint CI gate. |
 | 12 | [Set history editing](phase-12-history-editing.md) | Edit/delete individual logged sets, backfill past workouts, queue-safe offline semantics. |
 | 13 | [Travel mode](phase-13-travel-mode.md) | Equipment-constrained sessions: one-tap bulk swap to tagged alternates, progression continuity, streak protection. |
+| 14 | [Buddy system](phase-14-buddy-system.md) | Two-person accountability: presence-only sharing via invite code, buddy card, finished-workout + combo-streak nudges. |
 
 ## Planned
 
 | Phase | Doc | Summary |
 |-------|-----|---------|
-| 14 | [Buddy system](phase-14-buddy-system.md) | Two-person accountability: presence-only sharing via invite code, buddy card, finished-workout + combo-streak nudges. |
 | 15 | [Mesocycle programming](phase-15-mesocycles.md) | Planned training blocks with scheduled deloads; the coach proposes the next block from the finished one. |

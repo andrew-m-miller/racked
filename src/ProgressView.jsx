@@ -5,6 +5,7 @@ import { useAppState } from "./AppState.jsx";
 import { StatBlock, SectionTitle, ghostBtn } from "./ui.jsx";
 import { LineChart } from "./charts.jsx";
 import CoachSection from "./CoachSection.jsx";
+import BuddySection from "./BuddySection.jsx";
 import HealthSection from "./HealthSection.jsx";
 import { logsToCSV, weighInsToCSV, buildExportJSON } from "./dataExport.js";
 
@@ -367,6 +368,7 @@ export default function ProgressView({ onApplyPlanChange }) {
     <div>
       <BodyweightSection weighIns={weighIns} onAddWeighIn={onAddWeighIn} />
       <CalendarSection days={days} logs={logs} today={today} meta={meta} />
+      <BuddySection />
       <CoachSection
         days={days}
         logs={logs}

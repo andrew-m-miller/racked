@@ -120,12 +120,41 @@ as $$
 $$;
 revoke execute on function bump_fn_usage(uuid, text, int) from public, anon, authenticated;
 grant execute on function bump_fn_usage(uuid, text, int) to service_role;
+
+-- Buddy pairing (Phase 14): one pending invite code per user, and one
+-- accountability link per pair. Links are created only by the buddy-status
+-- edge function (service role) at redeem time; either member can read or
+-- delete (= unlink) their own link, and nothing else — buddy stats reach
+-- the client only through the edge function, never via RLS.
+create table buddy_codes (
+  user_id    uuid primary key default auth.uid(),
+  code       text not null unique,
+  created_at timestamptz default now()
+);
+alter table buddy_codes enable row level security;
+create policy "Own rows" on buddy_codes for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create table buddy_links (
+  user_a     uuid not null,
+  user_b     uuid not null,
+  created_at timestamptz default now(),
+  primary key (user_a, user_b),
+  check (user_a < user_b)
+);
+create unique index buddy_links_one_per_user_a on buddy_links (user_a);
+create unique index buddy_links_one_per_user_b on buddy_links (user_b);
+alter table buddy_links enable row level security;
+create policy "Own links" on buddy_links for select to authenticated
+  using (auth.uid() in (user_a, user_b));
+create policy "Own links delete" on buddy_links for delete to authenticated
+  using (auth.uid() in (user_a, user_b));
 ```
 
 Then: configure auth URLs (Phase 4 step 1 below), deploy the edge functions
-(AI coach + Phase 5 + Phase 10 sections), and set the secrets each section
-names. For a shared instance, also see "Phase 11 — sharing hardening" for
-invite-only sign-ups.
+(AI coach + Phase 5 + Phase 10 + Phase 14 sections), and set the secrets each
+section names. For a shared instance, also see "Phase 11 — sharing hardening"
+for invite-only sign-ups.
 
 ### 1. Supabase — create the table
 
@@ -537,6 +566,83 @@ create policy "Own rows delete" on logs for delete to authenticated
 
 Fail-soft during rollout: a missing/denied policy just surfaces the app's
 existing red error banner and the optimistic edit rolls back — nothing wedges.
+
+### Phase 14 — buddy system
+
+Phase 14 pairs exactly two accounts for accountability: mint an invite code,
+your buddy redeems it, and each of you gets a Progress-screen card with the
+other's *presence* — current streak, sessions this week vs target, whether
+today's workout happened — never weights, reps, or any set-level data. The
+`buddy-status` edge function is the only data path, so the sharing contract
+is enforced in one place. Sign-ups are invite-only (Phase 11), so a buddy
+must already be an invited user — codes can't leak to strangers.
+
+**1. Tables** — run in the SQL Editor:
+
+```sql
+-- One pending invite code per user (the sync_tokens pattern): minted and
+-- revoked in-app (Progress → Buddy), resolved to its owner by the
+-- buddy-status edge function at redeem time, then consumed.
+create table buddy_codes (
+  user_id    uuid primary key default auth.uid(),
+  code       text not null unique,
+  created_at timestamptz default now()
+);
+alter table buddy_codes enable row level security;
+create policy "Own rows" on buddy_codes for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- One accountability link per pair, stored with user_a < user_b. No insert
+-- policy on purpose: rows are created only by the buddy-status function
+-- (service role) when a code is redeemed. Either member can select the row
+-- and delete it (deleting IS the unlink); the per-column unique indexes
+-- enforce one buddy per user even under a redeem race.
+create table buddy_links (
+  user_a     uuid not null,
+  user_b     uuid not null,
+  created_at timestamptz default now(),
+  primary key (user_a, user_b),
+  check (user_a < user_b)
+);
+create unique index buddy_links_one_per_user_a on buddy_links (user_a);
+create unique index buddy_links_one_per_user_b on buddy_links (user_b);
+alter table buddy_links enable row level security;
+create policy "Own links" on buddy_links for select to authenticated
+  using (auth.uid() in (user_a, user_b));
+create policy "Own links delete" on buddy_links for delete to authenticated
+  using (auth.uid() in (user_a, user_b));
+```
+
+**2. Edge functions** — deploy the new one, redeploy `push-send` (it gained
+the buddy-finished message type and the weekly combo-streak line):
+
+```bash
+npx supabase functions deploy buddy-status push-send --project-ref fugrbmkhuhphskitpvzc
+```
+
+No new secrets: `buddy-status` needs nothing beyond the built-ins, and the
+buddy pushes reuse Phase 10's VAPID setup. No Anthropic calls anywhere in
+this phase, but `buddy-status` still takes a `fn_usage` cap for abuse
+symmetry (300 status calls and 20 buddy pushes per user per UTC day).
+
+**Using it** (Progress → Buddy):
+- **Pair up** — one of you taps "Create invite code" and sends the 8-char
+  code over any channel; the other types it into "Buddy's code" and links.
+  Redeeming is consent — there's no request/accept dance — and it consumes
+  the code. Unlink (either side) from the card; pairing again just takes a
+  fresh code.
+- **Buddy card** — streak, week-vs-target, and a "Finished Push day ✓" /
+  "Training today" / "Not trained yet today" line, computed fresh per visit.
+- **Nudges** — if your buddy has notifications on (Phase 10), completing a
+  session pings them ("Andrew just finished Legs day"); and when both of you
+  hit your weekly targets, the Sunday check-in push (the existing cron — no
+  new schedule) carries the combo streak: "3 weeks straight — both of you
+  hit target."
+
+Fail-soft: without the tables the Buddy section still renders and minting a
+code points here; without the `buddy-status` deploy the section shows the
+setup UI and redeeming reports the backend is missing. Nothing else is
+affected.
 
 ### 2. Environment variables
 
